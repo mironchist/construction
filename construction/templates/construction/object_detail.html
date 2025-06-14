@@ -1,0 +1,257 @@
+{% extends 'construction/base.html' %}
+{% load static %}
+
+{% block title %}{{ object.name }}{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'objects' %}">Объекты</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ object.name|truncatechars:30 }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Галерея фотографий -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0">Фотографии объекта</h2>
+                {% if user.role == 'admin' or user.role == 'foreman' or user == object.client %}
+                <a href="{% url 'add_photo' object.id %}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-plus-lg"></i> Добавить фото
+                </a>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if object.photos.all %}
+                <div class="row g-3" id="photoGallery">
+                    {% for photo in object.photos.all|slice:":6" %}
+                    <div class="col-6 col-md-4">
+                        <a href="#" data-bs-toggle="modal" data-bs-target="#photoModal" 
+                           data-img="{{ photo.photo.url }}" data-caption="{{ photo.comment|default:'Без описания' }}">
+                            <img src="{{ photo.photo.url }}" class="img-fluid rounded" alt="Фото объекта" style="height: 180px; width: 100%; object-fit: cover;">
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-images text-muted" style="font-size: 3rem;"></i>
+                    <p class="mt-2 text-muted">Нет загруженных фотографий</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Комментарии -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Комментарии</h2>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'add_comment' object.id %}" class="mb-4">
+                    {% csrf_token %}
+                    <div class="input-group">
+                        <input type="text" name="comment" class="form-control" placeholder="Добавьте комментарий..." required>
+                        <button type="submit" class="btn btn-primary">Отправить</button>
+                    </div>
+                </form>
+
+                <div class="comments">
+                    {% for comment in object.comments.all %}
+                    <div class="d-flex mb-3">
+                        <div class="flex-shrink-0">
+                            <img src="https://ui-avatars.com/api/?name={{ comment.author.get_full_name|urlencode }}&size=40&background=0D6EFD&color=fff" 
+                                 alt="{{ comment.author.get_full_name }}" class="rounded-circle">
+                        </div>
+                        <div class="ms-3">
+                            <div class="bg-light rounded-3 p-3">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <h6 class="mb-0 fw-bold">{{ comment.author.get_full_name }}</h6>
+                                    <small class="text-muted">{{ comment.created_date|timesince }} назад</small>
+                                </div>
+                                <p class="mb-0">{{ comment.text }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted text-center py-3">Пока нет комментариев. Будьте первым!</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Информация об объекте -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h2 class="h5 mb-0">Информация об объекте</h2>
+                    {% if user.role == 'admin' or user.role == 'foreman' or user == object.client %}
+                    <a href="{% url 'edit_object' object.id %}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-pencil"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span>Статус:</span>
+                        <span class="badge bg-{{ object.get_status_color }}">
+                            {{ object.get_status_display }}
+                        </span>
+                    </li>
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Адрес:</div>
+                        {{ object.address }}
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <div>
+                            <div class="fw-bold">Дата начала:</div>
+                            {{ object.start_date|date:"d.m.Y" }}
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold">Плановая дата сдачи:</div>
+                            {{ object.end_date|date:"d.m.Y"|default:"не указана" }}
+                        </div>
+                    </li>
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Заказчик:</div>
+                        {{ object.client.get_full_name }}
+                    </li>
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Ответственный прораб:</div>
+                        {{ object.foreman.get_full_name }}
+                    </li>
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Рабочие:</div>
+                        {% if object.workers.all %}
+                            {% for worker in object.workers.all %}
+                                {{ worker.get_full_name }}{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted">Не назначены</span>
+                        {% endif %}
+                    </li>
+                    {% if object.description %}
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Описание:</div>
+                        {{ object.description|linebreaksbr }}
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Прогресс работ -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Прогресс работ</h2>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-3" style="height: 20px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         style="width: {{ object.progress }}%;" 
+                         aria-valuenow="{{ object.progress }}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">
+                        {{ object.progress }}%
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <small>Начало: {{ object.start_date|date:"d.m.Y" }}</small>
+                    <small>Срок: {{ object.end_date|date:"d.m.Y"|default:"не указан" }}</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Действия -->
+        {% if user.role == 'admin' or user.role == 'foreman' or user == object.client %}
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Действия</h2>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'add_photo' object.id %}" class="btn btn-outline-primary">
+                        <i class="bi bi-camera"></i> Добавить фото
+                    </a>
+                    <a href="{% url 'edit_object' object.id %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-pencil"></i> Редактировать объект
+                    </a>
+                    {% if user.role == 'admin' or user == object.client %}
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                        <i class="bi bi-trash"></i> Удалить объект
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Модальное окно для просмотра фото -->
+<div class="modal fade" id="photoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Просмотр фотографии</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img src="" class="img-fluid" id="modalImage">
+                <p class="mt-3" id="modalCaption"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения удаления -->
+{% if user.role == 'admin' or user == object.client %}
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подтверждение удаления</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что хотите удалить объект "{{ object.name }}"? Это действие нельзя отменить.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <form action="{% url 'delete_object' object.id %}" method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Инициализация модального окна для просмотра фото
+    document.addEventListener('DOMContentLoaded', function() {
+        const photoModal = document.getElementById('photoModal');
+        if (photoModal) {
+            photoModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget;
+                const imgSrc = button.getAttribute('data-img');
+                const caption = button.getAttribute('data-caption');
+                
+                const modalImage = photoModal.querySelector('#modalImage');
+                const modalCaption = photoModal.querySelector('#modalCaption');
+                
+                modalImage.src = imgSrc;
+                modalCaption.textContent = caption;
+            });
+        }
+    });
+</script>
+{% endblock %}

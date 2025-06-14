@@ -1,0 +1,58 @@
+{% extends 'construction/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'objects' %}">Объекты</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ title }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title mb-0">{{ title }}</h4>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <a href="{% url 'objects' %}" class="btn btn-secondary me-md-2">
+                            <i class="bi bi-arrow-left"></i> Назад к списку
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg"></i> Сохранить
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Инициализация выбора даты
+    document.addEventListener('DOMContentLoaded', function() {
+        // Инициализация flatpickr для полей даты
+        flatpickr("input[type='date']", {
+            dateFormat: "Y-m-d",
+            allowInput: true,
+            locale: "ru"
+        });
+        
+        // Инициализация выбора пользователей
+        $('.select2').select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            placeholder: 'Выберите пользователей',
+            allowClear: true
+        });
+    });
+</script>
+{% endblock %}

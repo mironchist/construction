@@ -1,0 +1,100 @@
+{% extends 'construction/base.html' %}
+
+{% block title %}Профиль пользователя{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item active" aria-current="page">Профиль</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-body text-center">
+                <img src="https://ui-avatars.com/api/?name={{ user.get_full_name|urlencode }}&size=150&background=0D6EFD&color=fff" 
+                     alt="Аватар" class="rounded-circle mb-3" width="150">
+                <h4>{{ user.get_full_name }}</h4>
+                <p class="text-muted">{{ user.get_role_display }}</p>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Контактная информация</h5>
+            </div>
+            <div class="card-body">
+                <p><i class="bi bi-envelope me-2"></i> {{ user.email }}</p>
+                {% if user.phone %}
+                    <p><i class="bi bi-telephone me-2"></i> {{ user.phone }}</p>
+                {% endif %}
+                <p><i class="bi bi-calendar-check me-2"></i> Дата регистрации: {{ user.date_joined|date:"d.m.Y" }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="profileTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="edit-tab" data-bs-toggle="tab" data-bs-target="#edit" type="button" role="tab">
+                            Редактировать профиль
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="password-tab" data-bs-toggle="tab" data-bs-target="#password" type="button" role="tab">
+                            Сменить пароль
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="profileTabsContent">
+                    <div class="tab-pane fade show active" id="edit" role="tabpanel">
+                        <form method="post" action="{% url 'profile_update' %}">
+                            {% csrf_token %}
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="first_name" class="form-label">Имя</label>
+                                    <input type="text" class="form-control" id="first_name" name="first_name" value="{{ user.first_name }}">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="last_name" class="form-label">Фамилия</label>
+                                    <input type="text" class="form-control" id="last_name" name="last_name" value="{{ user.last_name }}">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}">
+                            </div>
+                            <div class="mb-3">
+                                <label for="phone" class="form-label">Телефон</label>
+                                <input type="tel" class="form-control" id="phone" name="phone" value="{{ user.phone|default:'' }}">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                        </form>
+                    </div>
+                    <div class="tab-pane fade" id="password" role="tabpanel">
+                        <form method="post" action="{% url 'change_password' %}">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="old_password" class="form-label">Текущий пароль</label>
+                                <input type="password" class="form-control" id="old_password" name="old_password" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="new_password1" class="form-label">Новый пароль</label>
+                                <input type="password" class="form-control" id="new_password1" name="new_password1" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="new_password2" class="form-label">Подтвердите новый пароль</label>
+                                <input type="password" class="form-control" id="new_password2" name="new_password2" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Изменить пароль</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

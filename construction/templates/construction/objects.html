@@ -1,0 +1,111 @@
+{% extends 'construction/base.html' %}
+
+{% block title %}Список объектов{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item active" aria-current="page">Объекты</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Список объектов</h1>
+    {% if user.role == 'admin' or user.role == 'foreman' or user.role == 'client' %}
+    <a href="{% url 'object_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg"></i> Добавить объект
+    </a>
+    {% endif %}
+</div>
+
+<div class="row">
+    {% for object in object_list %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            {% if object.photos.first %}
+            <img src="{{ object.photos.first.photo.url }}" class="card-img-top" alt="{{ object.name }}" style="height: 200px; object-fit: cover;">
+            {% else %}
+            <div class="bg-light text-center py-5" style="height: 200px; display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-building" style="font-size: 3rem; color: #6c757d;"></i>
+            </div>
+            {% endif %}
+            <div class="card-body d-flex flex-column">
+                <h5 class="card-title">{{ object.name }}</h5>
+                <p class="card-text text-muted">
+                    <i class="bi bi-geo-alt"></i> {{ object.address|truncatechars:50 }}
+                </p>
+                <div class="mt-auto">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="badge bg-{{ object.get_status_color }}">
+                            {{ object.get_status_display }}
+                        </span>
+                        <small class="text-muted">
+                            {{ object.start_date|date:"d.m.Y" }} - {% if object.end_date %}{{ object.end_date|date:"d.m.Y" }}{% else %}н.в.{% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent">
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'object_detail' object.pk %}" class="btn btn-sm btn-outline-primary">Подробнее</a>
+                    {% if user.role == 'admin' or user.role == 'foreman' or user == object.client %}
+                    <a href="{% url 'object_edit' object.pk %}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-pencil"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> Пока нет ни одного объекта.
+            {% if user.role == 'admin' or user.role == 'foreman' or user.role == 'client' %}
+            <a href="{% url 'object_create' %}" class="alert-link">Добавьте первый объект</a>.
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if is_paginated %}
+<nav aria-label="Навигация по страницам">
+    <ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}" aria-label="Назад">
+                <span aria-hidden="true">&laquo;</span>
+            </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <span class="page-link">&laquo;</span>
+        </li>
+        {% endif %}
+        
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+            <li class="page-item active">
+                <span class="page-link">{{ num }}</span>
+            </li>
+            {% else %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+            </li>
+            {% endif %}
+        {% endfor %}
+        
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}" aria-label="Вперед">
+                <span aria-hidden="true">&raquo;</span>
+            </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <span class="page-link">&raquo;</span>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}

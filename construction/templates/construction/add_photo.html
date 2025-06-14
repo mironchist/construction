@@ -1,0 +1,167 @@
+{% extends 'construction/base.html' %}
+
+{% block title %}Добавление фотографии{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'objects' %}">Объекты</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'object_detail' object.id %}">{{ object.name|truncatechars:20 }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Добавление фото</li>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title mb-0">Добавление фотографии</h2>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="photo" class="form-label">Фотография</label>
+                        <input type="file" class="form-control" id="photo" name="photo" accept="image/*" required>
+                        <div class="form-text">Поддерживаемые форматы: JPG, PNG, GIF. Максимальный размер: 10 МБ.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="comment" class="form-label">Комментарий (необязательно)</label>
+                        <textarea class="form-control" id="comment" name="comment" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{% url 'object_detail' object.id %}" class="btn btn-secondary me-md-2">Отмена</a>
+                        <button type="submit" class="btn btn-primary">Загрузить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Предпросмотр фотографии -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Предпросмотр</h2>
+            </div>
+            <div class="card-body text-center">
+                <div id="imagePreview" class="d-none">
+                    <img id="previewImage" src="#" alt="Предпросмотр" class="img-fluid rounded" style="max-height: 400px;">
+                    <p class="mt-2 text-muted" id="imageName"></p>
+                </div>
+                <div id="noPreview" class="py-5">
+                    <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
+                    <p class="mt-2 text-muted">Выберите фотографию для предпросмотра</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- Информация об объекте -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Информация об объекте</h2>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">{{ object.name }}</h5>
+                <p class="card-text text-muted">
+                    <i class="bi bi-geo-alt"></i> {{ object.address|truncatechars:50 }}
+                </p>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="badge bg-{{ object.get_status_color }}">
+                        {{ object.get_status_display }}
+                    </span>
+                    <small class="text-muted">
+                        {{ object.start_date|date:"d.m.Y" }} - 
+                        {% if object.end_date %}{{ object.end_date|date:"d.m.Y" }}{% else %}н.в.{% endif %}
+                    </small>
+                </div>
+                
+                <hr>
+                
+                <h6>Последние фотографии:</h6>
+                <div class="row g-2">
+                    {% for photo in object.photos.all|slice:":4" %}
+                    <div class="col-6">
+                        <a href="#" class="d-block mb-2" data-bs-toggle="modal" data-bs-target="#photoModal" 
+                           data-img="{{ photo.photo.url }}" data-caption="{{ photo.comment|default:'Без описания' }}">
+                            <img src="{{ photo.photo.url }}" class="img-fluid rounded" alt="Фото объекта" 
+                                 style="height: 100px; width: 100%; object-fit: cover;">
+                        </a>
+                    </div>
+                    {% empty %}
+                    <div class="col-12">
+                        <p class="text-muted small">Пока нет загруженных фотографий</p>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="mt-3">
+                    <a href="{% url 'object_detail' object.id %}" class="btn btn-outline-primary w-100">
+                        <i class="bi bi-arrow-left"></i> Назад к объекту
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для просмотра фото -->
+<div class="modal fade" id="photoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Просмотр фотографии</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img src="" class="img-fluid" id="modalImage">
+                <p class="mt-3" id="modalCaption"></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Предпросмотр выбранной фотографии
+    document.getElementById('photo').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const preview = document.getElementById('previewImage');
+                preview.src = e.target.result;
+                document.getElementById('imageName').textContent = file.name;
+                document.getElementById('imagePreview').classList.remove('d-none');
+                document.getElementById('noPreview').classList.add('d-none');
+            }
+            
+            reader.readAsDataURL(file);
+        } else {
+            document.getElementById('imagePreview').classList.add('d-none');
+            document.getElementById('noPreview').classList.remove('d-none');
+        }
+    });
+    
+    // Инициализация модального окна для просмотра фото
+    document.addEventListener('DOMContentLoaded', function() {
+        const photoModal = document.getElementById('photoModal');
+        if (photoModal) {
+            photoModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget;
+                const imgSrc = button.getAttribute('data-img');
+                const caption = button.getAttribute('data-caption');
+                
+                const modalImage = photoModal.querySelector('#modalImage');
+                const modalCaption = photoModal.querySelector('#modalCaption');
+                
+                modalImage.src = imgSrc;
+                modalCaption.textContent = caption;
+            });
+        }
+    });
+</script>
+{% endblock %}

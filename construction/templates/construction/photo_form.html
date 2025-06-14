@@ -1,0 +1,77 @@
+{% extends 'construction/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'objects' %}">Объекты</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'object_detail' object.pk %}">{{ object.name|truncatechars:20 }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ title }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">{{ title }}</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            {% if photo %}
+                                <div class="mb-3">
+                                    <img src="{{ photo.photo.url }}" class="img-fluid rounded" alt="Фотография объекта">
+                                </div>
+                                <p class="text-muted small">
+                                    Добавлено: {{ photo.upload_date|date:"d.m.Y H:i" }}<br>
+                                    Автор: {{ photo.uploaded_by.get_full_name|default:photo.uploaded_by.username }}
+                                </p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <form method="post" enctype="multipart/form-data">
+                                {% csrf_token %}
+                                {{ form|crispy }}
+                                <div class="d-flex justify-content-between mt-4">
+                                    <a href="{% url 'object_detail' object.pk %}" class="btn btn-outline-secondary">
+                                        <i class="bi bi-arrow-left"></i> Назад
+                                    </a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-save"></i> Сохранить
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Предпросмотр загружаемого изображения
+    document.addEventListener('DOMContentLoaded', function() {
+        const fileInput = document.querySelector('input[type="file"]');
+        const imgPreview = document.querySelector('.img-preview');
+        
+        if (fileInput && imgPreview) {
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imgPreview.src = e.target.result;
+                        imgPreview.style.display = 'block';
+                    }
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}
