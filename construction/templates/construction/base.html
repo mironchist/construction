@@ -52,6 +52,13 @@
                 </ul>
                 <ul class="navbar-nav">
                     {% if user.is_authenticated %}
+                        {% if user.is_admin %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'user_list' %}">
+                                <i class="bi bi-people"></i> Пользователи
+                            </a>
+                        </li>
+                        {% endif %}
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'profile' %}">
                                 <i class="bi bi-person"></i> Профиль
@@ -110,15 +117,86 @@
     
     {% block extra_js %}{% endblock %}
     
+    <style>
+        /* Стили для выбора ролей */
+        .role-cell {
+            min-width: 200px;
+        }
+        
+        .role-badge .badge {
+            font-size: 0.875rem;
+            padding: 0.35em 0.65em;
+        }
+        
+        .role-selector {
+            flex-grow: 1;
+            max-width: 200px;
+        }
+        
+        .role-selector .select2-container {
+            width: 100% !important;
+        }
+        
+        .role-selector .select2-selection--single {
+            height: 31px;
+            padding: 0.25rem 0.5rem;
+        }
+        
+        .role-selector .select2-selection__arrow {
+            height: 29px;
+        }
+        
+        .role-selector .select2-selection__rendered {
+            line-height: 1.5;
+            padding-left: 0.5rem;
+            padding-right: 1.5rem;
+        }
+        
+        /* Иконки для ролей */
+        .select2-results__option {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #000;
+        }
+        
+        .select2-results__option[aria-selected="true"] {
+            background-color: #f8f9fa;
+            color: #212529;
+        }
+        
+        .select2-container--bootstrap-5 .select2-results__option--highlighted {
+            color: #fff;
+            background-color: #0d6efd;
+        }
+    </style>
+    
     <script>
+        // Функция для форматирования опций с HTML
+        function formatOption(option) {
+            if (!option.id) return option.text;
+            return $(`<span>${option.text}</span>`);
+        }
+        
         // Инициализация всех элементов с классом select2
         $(document).ready(function() {
-            $('.select2').select2({
+            // Обычный select2
+            $('.select2:not(.user-role-select)').select2({
                 theme: 'bootstrap-5',
                 width: '100%',
                 placeholder: 'Выберите значение',
                 allowClear: true,
                 language: 'ru'
+            });
+            
+            // Select2 для выбора ролей с поддержкой HTML
+            $('.user-role-select').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                templateResult: formatOption,
+                templateSelection: formatOption,
+                language: 'ru',
+                minimumResultsForSearch: -1 // Отключаем поиск
             });
             
             // Инициализация flatpickr для всех полей с атрибутом type="date"
@@ -127,8 +205,65 @@
                 allowInput: true,
                 locale: "ru"
             });
+            
+            // Обработчик изменения роли пользователя
+            $('.user-role-select').on('change', function() {
+                const userId = $(this).data('user-id');
+                const newRole = $(this).val();
+                
+                if (!newRole) return;
+                
+                // Отправляем AJAX-запрос для обновления роли
+                $.ajax({
+                    url: `/users/${userId}/update-role/`,
+                    method: 'POST',
+                    data: {
+                        'role': newRole,
+                        'csrfmiddlewaretoken': '{{ csrf_token }}'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Обновляем бейдж с ролью
+                            const roleBadge = $(`select[data-user-id="${userId}"]`)
+                                .closest('.role-cell')
+                                .find('.role-badge .badge');
+                                
+                            // Обновляем текст и классы бейджа в зависимости от роли
+                            roleBadge.text(response.role_display)
+                                   .removeClass('bg-secondary bg-primary bg-warning bg-success bg-danger')
+                                   .addClass(`bg-${response.role}`);
+                                    
+                            // Показываем уведомление
+                            const toast = new bootstrap.Toast(document.getElementById('toast'));
+                            document.getElementById('toast-message').textContent = 'Роль успешно обновлена';
+                            document.getElementById('toast').querySelector('.toast-header').className = 
+                                `toast-header text-white bg-${response.role}`;
+                            toast.show();
+                        } else {
+                            alert('Ошибка при обновлении роли: ' + (response.error || 'Неизвестная ошибка'));
+                        }
+                    },
+                    error: function(xhr) {
+                        const error = xhr.responseJSON ? xhr.responseJSON.error : 'Ошибка сервера';
+                        alert('Ошибка при обновлении роли: ' + error);
+                    }
+                });
+            });
         });
     </script>
+    <!-- Toast уведомление -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header text-white">
+                <strong class="me-auto">Уведомление</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Закрыть"></button>
+            </div>
+            <div class="toast-body" id="toast-message">
+                Роль успешно обновлена
+            </div>
+        </div>
+    </div>
+    
     <script src="{% static 'js/main.js' %}"></script>
 </body>
 </html>

@@ -1,11 +1,14 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate, update_session_auth_hash
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.contrib.auth.forms import PasswordChangeForm
 from django.core.paginator import Paginator
+from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods
+from django.db.models import Q
 from .models import User, ConstructionSite, SitePhoto, SiteComment
-from .forms import UserRegistrationForm, UserEditForm, ConstructionSiteForm, SitePhotoForm, CommentForm
+from .forms import UserRegistrationForm, UserEditForm, ConstructionSiteForm, SitePhotoForm, CommentForm, UserRoleForm
 
 # Аутентификация
 def login_view(request):
@@ -38,9 +41,17 @@ def register_view(request):
     if request.method == 'POST':
         form = UserRegistrationForm(request.POST)
         if form.is_valid():
-            user = form.save()
+            # Сохраняем пользователя с ролью 'worker' по умолчанию
+            user = form.save(commit=False)
+            user.role = 'worker'  # Устанавливаем роль по умолчанию
+            user.save()
+            
+            # Сохраняем группы, если они есть
+            if hasattr(form, 'save_m2m'):
+                form.save_m2m()
+                
             login(request, user)
-            messages.success(request, 'Регистрация прошла успешно!')
+            messages.success(request, 'Регистрация прошла успешно! Вам автоматически назначена роль рабочего.')
             return redirect('home')
     else:
         form = UserRegistrationForm()
@@ -66,6 +77,34 @@ def profile_update_view(request):
     
     # Если форма не валидна, показываем страницу с ошибками
     return render(request, 'construction/profile.html', {'form': form})
+
+@login_required
+def admin_profile_update_view(request, user_id):
+    """Редактирование профиля пользователя администратором"""
+    if not request.user.is_admin:
+        messages.error(request, 'У вас нет прав для выполнения этого действия')
+        return redirect('home')
+    
+    user_to_edit = get_object_or_404(User, id=user_id)
+    
+    # Проверяем, не пытаемся ли редактировать другого администратора
+    if user_to_edit.role == 'admin' and user_to_edit != request.user:
+        messages.error(request, 'Нельзя редактировать профиль другого администратора')
+        return redirect('user_list')
+    
+    if request.method == 'POST':
+        form = UserEditForm(instance=user_to_edit, data=request.POST, files=request.FILES)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Профиль пользователя {user_to_edit.get_full_name()} успешно обновлен')
+            return redirect('user_list')
+    else:
+        form = UserEditForm(instance=user_to_edit)
+    
+    return render(request, 'construction/admin_profile_update.html', {
+        'form': form,
+        'user_to_edit': user_to_edit
+    })
 
 @login_required
 def change_password_view(request):
@@ -337,6 +376,92 @@ def edit_photo_view(request, pk):
         'photo': photo,
         'title': 'Редактирование фотографии'
     })
+
+@login_required
+def add_comment_view(request, pk):
+    """Добавление комментария к объекту"""
+    obj = get_object_or_404(ConstructionSite, pk=pk)
+    
+    # Проверка прав доступа
+    if not (request.user.role in ['admin', 'foreman'] or 
+            obj.foreman == request.user or 
+            obj.client == request.user or
+            request.user in obj.workers.all()):
+        messages.error(request, 'У вас нет прав на добавление комментариев к этому объекту')
+        return redirect('object_detail', pk=pk)
+    
+    if request.method == 'POST':
+        form = CommentForm(request.POST)
+        if form.is_valid():
+            comment = form.save(commit=False)
+            comment.site = obj
+            comment.author = request.user
+            comment.save()
+            messages.success(request, 'Комментарий успешно добавлен')
+            return redirect('object_detail', pk=pk)
+    else:
+        form = CommentForm()
+    
+    # Если форма не валидна, вернем пользователя на страницу объекта с формой
+    return redirect('object_detail', pk=pk)
+
+# Управление пользователями
+@login_required
+def user_list_view(request):
+    """Список пользователей для администратора (исключая других администраторов)"""
+    if not request.user.is_admin:
+        messages.error(request, 'У вас нет прав для просмотра этой страницы')
+        return redirect('home')
+    
+    # Получаем всех пользователей, кроме администраторов
+    users = User.objects.exclude(role='admin').order_by('-date_joined')
+    return render(request, 'construction/user_list.html', {'users': users})
+
+@login_required
+@require_http_methods(["POST"])
+def update_user_role_view(request, user_id):
+    """Обновление роли пользователя через AJAX"""
+    if not request.user.is_admin:
+        return JsonResponse(
+            {'success': False, 'error': 'У вас нет прав для выполнения этого действия'}, 
+            status=403
+        )
+    
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Проверяем, не пытаемся ли изменить роль другого администратора
+        if user.role == 'admin' and user != request.user:
+            return JsonResponse(
+                {'success': False, 'error': 'Нельзя изменить роль другого администратора'}, 
+                status=403
+            )
+            
+        form = UserRoleForm(request.POST, instance=user)
+        
+        if form.is_valid():
+            form.save()
+            return JsonResponse({
+                'success': True, 
+                'message': f'Роль пользователя {user.get_full_name()} успешно обновлена',
+                'new_role_display': user.get_role_display()
+            })
+        else:
+            return JsonResponse(
+                {'success': False, 'error': 'Неверные данные формы'}, 
+                status=400
+            )
+            
+    except User.DoesNotExist:
+        return JsonResponse(
+            {'success': False, 'error': 'Пользователь не найден'}, 
+            status=404
+        )
+    except Exception as e:
+        return JsonResponse(
+            {'success': False, 'error': str(e)}, 
+            status=500
+        )
 
 # API представления
 @login_required

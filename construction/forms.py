@@ -2,27 +2,26 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ValidationError
 from .models import ConstructionSite, SitePhoto, SiteComment
 
 User = get_user_model()
 
 class UserRegistrationForm(UserCreationForm):
     """Форма регистрации пользователя"""
-    ROLE_CHOICES = [
-        ('worker', 'Рабочий'),
-        ('foreman', 'Прораб'),
-        ('client', 'Заказчик'),
-    ]
-    
     first_name = forms.CharField(label='Имя', max_length=30, required=True)
     last_name = forms.CharField(label='Фамилия', max_length=30, required=True)
     email = forms.EmailField(label='Email', required=True)
-    phone = forms.CharField(label='Телефон', max_length=20, required=True)
-    role = forms.ChoiceField(label='Роль', choices=ROLE_CHOICES, required=True)
+    phone = forms.CharField(
+        label='Телефон', 
+        max_length=20, 
+        required=False,
+        help_text='Необязательное поле'
+    )
     
     class Meta:
         model = User
-        fields = ('username', 'first_name', 'last_name', 'email', 'phone', 'role', 'password1', 'password2')
+        fields = ('username', 'first_name', 'last_name', 'email', 'phone', 'password1', 'password2')
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -67,12 +66,13 @@ class ConstructionSiteForm(forms.ModelForm):
     """Форма для создания и редактирования строительного объекта"""
     class Meta:
         model = ConstructionSite
-        fields = ('name', 'address', 'start_date', 'end_date', 'description', 'client', 'foreman', 'workers')
+        fields = ('name', 'address', 'start_date', 'end_date', 'description', 'client', 'foreman')
         widgets = {
             'start_date': forms.DateInput(attrs={'type': 'date'}),
             'end_date': forms.DateInput(attrs={'type': 'date'}),
             'description': forms.Textarea(attrs={'rows': 3}),
-            'workers': forms.SelectMultiple(attrs={'class': 'form-select'}),
+            'client': forms.Select(attrs={'class': 'form-select'}),
+            'foreman': forms.Select(attrs={'class': 'form-select'}),
         }
         labels = {
             'name': 'Название объекта',
@@ -80,9 +80,12 @@ class ConstructionSiteForm(forms.ModelForm):
             'start_date': 'Дата начала работ',
             'end_date': 'Планируемая дата окончания',
             'description': 'Описание',
-            'client': 'Заказчик',
-            'foreman': 'Ответственный прораб',
-            'workers': 'Рабочие',
+            'client': 'Заказчик (необязательно)',
+            'foreman': 'Ответственный прораб (необязательно)',
+        }
+        help_texts = {
+            'client': 'Выберите заказчика, если он зарегистрирован в системе',
+            'foreman': 'Выберите прораба, если он зарегистрирован в системе',
         }
     
     def __init__(self, user, *args, **kwargs):
@@ -91,46 +94,38 @@ class ConstructionSiteForm(forms.ModelForm):
         
         # Добавляем классы для стилизации полей
         for field_name, field in self.fields.items():
-            if field_name not in ['workers']:  # Для workers будем использовать Select2
-                field.widget.attrs['class'] = 'form-control'
+            field.widget.attrs['class'] = 'form-control'
             if field_name in ['start_date', 'end_date']:
                 field.widget.attrs['placeholder'] = 'гггг-мм-дд'
         
+        # Делаем поля необязательными
+        self.fields['client'].required = False
+        self.fields['foreman'].required = False
+        
         # Настройка полей в зависимости от роли пользователя
         if user.role == 'client':
-            # Клиент может выбрать только прораба и рабочих
+            # Клиент может выбрать только прораба
             self.fields['foreman'].queryset = User.objects.filter(role='foreman')
-            self.fields['workers'].queryset = User.objects.filter(role='worker')
             del self.fields['client']  # Удаляем поле клиента, т.к. это сам пользователь
             
             # Добавляем классы для Select2
             self.fields['foreman'].widget.attrs['class'] = 'form-select select2'
-            self.fields['workers'].widget.attrs['class'] = 'form-select select2'
             
         elif user.role == 'foreman':
-            # Прораб может выбрать только клиентов и рабочих
+            # Прораб может выбрать только клиентов
             self.fields['client'].queryset = User.objects.filter(role='client')
-            self.fields['workers'].queryset = User.objects.filter(role='worker')
             
             # Добавляем классы для Select2
             self.fields['client'].widget.attrs['class'] = 'form-select select2'
-            self.fields['workers'].widget.attrs['class'] = 'form-select select2'
             
         elif user.role == 'admin':
             # Админ может выбрать всех
             self.fields['client'].queryset = User.objects.filter(role='client')
             self.fields['foreman'].queryset = User.objects.filter(role='foreman')
-            self.fields['workers'].queryset = User.objects.filter(role='worker')
             
             # Добавляем классы для Select2
             self.fields['client'].widget.attrs['class'] = 'form-select select2'
             self.fields['foreman'].widget.attrs['class'] = 'form-select select2'
-            self.fields['workers'].widget.attrs['class'] = 'form-select select2'
-        
-        # Добавляем классы Bootstrap для стилизации
-        for field_name, field in self.fields.items():
-            if field_name != 'workers':
-                field.widget.attrs['class'] = 'form-control'
     
     def clean(self):
         cleaned_data = super().clean()
@@ -189,3 +184,28 @@ class CommentForm(forms.ModelForm):
         labels = {
             'text': 'Комментарий',
         }
+
+class UserRoleForm(forms.ModelForm):
+    """Форма для изменения роли пользователя"""
+    ROLE_CHOICES = [
+        ('worker', 'Рабочий'),
+        ('foreman', 'Прораб'),
+        ('client', 'Заказчик'),
+        ('admin', 'Администратор'),
+    ]
+    
+    role = forms.ChoiceField(
+        label='Роль',
+        choices=ROLE_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    
+    class Meta:
+        model = User
+        fields = ('role',)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Устанавливаем текущую роль пользователя
+        if self.instance and self.instance.pk:
+            self.fields['role'].initial = self.instance.role

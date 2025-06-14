@@ -88,7 +88,7 @@
                 <div class="d-flex justify-content-between align-items-center">
                     <h2 class="h5 mb-0">Информация об объекте</h2>
                     {% if user.role == 'admin' or user.role == 'foreman' or user == object.client %}
-                    <a href="{% url 'edit_object' object.id %}" class="btn btn-sm btn-outline-secondary">
+                    <a href="{% url 'object_edit' object.id %}" class="btn btn-sm btn-outline-secondary">
                         <i class="bi bi-pencil"></i>
                     </a>
                     {% endif %}
@@ -178,7 +178,7 @@
                     <a href="{% url 'add_photo' object.id %}" class="btn btn-outline-primary">
                         <i class="bi bi-camera"></i> Добавить фото
                     </a>
-                    <a href="{% url 'edit_object' object.id %}" class="btn btn-outline-secondary">
+                    <a href="{% url 'object_edit' object.id %}" class="btn btn-outline-secondary">
                         <i class="bi bi-pencil"></i> Редактировать объект
                     </a>
                     {% if user.role == 'admin' or user == object.client %}
@@ -223,7 +223,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                <form action="{% url 'delete_object' object.id %}" method="post" class="d-inline">
+                <form action="{% url 'object_delete' object.id %}" method="post" class="d-inline">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-danger">Удалить</button>
                 </form>

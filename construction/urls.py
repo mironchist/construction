@@ -1,6 +1,9 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
+from django.views.decorators.http import require_http_methods
 from . import views
+
+# app_name = 'construction'  # Удаляем пространство имен
 
 urlpatterns = [
     # Аутентификация
@@ -12,6 +15,7 @@ urlpatterns = [
     # Профиль пользователя
     path('profile/', views.profile_view, name='profile'),
     path('profile/update/', views.profile_update_view, name='profile_update'),
+    path('profile/update/<int:user_id>/', views.admin_profile_update_view, name='admin_profile_update'),
     path('profile/change-password/', views.change_password_view, name='change_password'),
     
     # Сброс пароля
@@ -48,10 +52,19 @@ urlpatterns = [
     
     # Фотографии объектов
     path('objects/<int:pk>/add-photo/', views.add_photo_view, name='add_photo'),
+    
+    # Комментарии объектов
+    path('objects/<int:pk>/add-comment/', views.add_comment_view, name='add_comment'),
     path('photos/<int:pk>/edit/', views.edit_photo_view, name='edit_photo'),
     path('photos/<int:pk>/delete/', views.delete_photo_view, name='delete_photo'),
     
     # API для AJAX запросов
     path('api/objects/<int:pk>/photos/', views.api_object_photos, name='api_object_photos'),
     path('api/objects/<int:pk>/comments/', views.api_object_comments, name='api_object_comments'),
+    
+    # Управление пользователями
+    path('users/', views.user_list_view, name='user_list'),
+    path('users/<int:user_id>/update-role/', 
+         require_http_methods(['POST'])(views.update_user_role_view), 
+         name='update_user_role'),
 ]

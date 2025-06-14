@@ -17,6 +17,10 @@ class User(AbstractUser):
     
     def __str__(self):
         return f"{self.get_full_name()} ({self.get_role_display()})"
+        
+    @property
+    def is_admin(self):
+        return self.role == 'admin' or self.is_superuser or self.is_staff
 
 # Модель строительного объекта
 class ConstructionSite(models.Model):
@@ -29,7 +33,7 @@ class ConstructionSite(models.Model):
     ]
     
     name = models.CharField('Название объекта', max_length=200)
-    address = models.TextField('Адрес объекта')
+    address = models.CharField('Адрес объекта', max_length=255)
     start_date = models.DateField('Дата начала работ', default=timezone.now)
     end_date = models.DateField('Планируемая дата окончания', null=True, blank=True)
     description = models.TextField('Описание объекта', blank=True, null=True)
