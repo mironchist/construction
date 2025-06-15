@@ -1,0 +1,36 @@
+<div class="card mb-3" id="comment-{{ comment.id }}">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <div class="d-flex align-items-center">
+            <div class="me-2">
+                <div class="avatar-sm" style="width: 32px; height: 32px; background-color: #e9ecef; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                    <span class="text-muted">{{ comment.author.first_name|first|upper }}{{ comment.author.last_name|first|upper|default:'' }}</span>
+                </div>
+            </div>
+            <div>
+                <div class="fw-medium">{{ comment.author.get_full_name|default:comment.author.username }}</div>
+                <small class="text-muted">{{ comment.created_at|date:"d.m.Y H:i" }}</small>
+                {% if comment.updated_at != comment.created_at %}
+                    <small class="text-muted">(изменен)</small>
+                {% endif %}
+            </div>
+        </div>
+        {% if comment.can_delete or user.is_superuser or user == comment.author %}
+        <div class="dropdown">
+            <button class="btn btn-sm btn-link text-muted p-0" type="button" id="commentMenu{{ comment.id }}" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="commentMenu{{ comment.id }}">
+                {% if comment.can_edit %}
+                <li><a class="dropdown-item edit-comment" href="#" data-comment-id="{{ comment.id }}">Редактировать</a></li>
+                {% endif %}
+                {% if comment.can_delete %}
+                <li><a class="dropdown-item delete-comment" href="#" data-comment-id="{{ comment.id }}">Удалить</a></li>
+                {% endif %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body py-2">
+        <div class="comment-text">{{ comment.text|linebreaksbr }}</div>
+    </div>
+</div>

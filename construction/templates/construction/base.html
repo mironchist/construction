@@ -11,6 +11,7 @@
     <!-- Select2 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    {% block extra_css %}{% endblock %}
     <!-- Flatpickr CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <!-- Custom CSS -->
@@ -49,6 +50,13 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'objects' %}">Объекты</a>
                     </li>
+                    {% if user.is_authenticated and user.role in 'foreman,admin' or user.is_superuser %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'task_list' %}">
+                            <i class="bi bi-list-task"></i> Задачи
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
                 <ul class="navbar-nav">
                     {% if user.is_authenticated %}
@@ -114,9 +122,77 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
     
-    {% block extra_js %}{% endblock %}
-    
     <style>
+        /* Стили для комментариев */
+        .comment {
+            border-left: 3px solid #dee2e6;
+            padding-left: 1rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .comment.highlight {
+            background-color: rgba(13, 110, 253, 0.05);
+            border-left-color: #0d6efd;
+        }
+        
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+        
+        .comment-author {
+            font-weight: 600;
+            color: #0d6efd;
+        }
+        
+        .comment-date {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        
+        .comment-actions {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .comment:hover .comment-actions {
+            opacity: 1;
+        }
+        
+        /* Анимация появления нового комментария */
+        @keyframes highlight {
+            from { background-color: rgba(13, 110, 253, 0.1); }
+            to { background-color: transparent; }
+        }
+        
+        .highlight {
+            animation: highlight 2s ease-out;
+        }
+        
+        /* Стили для уведомлений */
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1100;
+        }
+        
+        .toast {
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 0.375rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            max-width: 350px;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        
+        .toast.show {
+            opacity: 1;
+        }
+        
         /* Стили для выбора ролей */
         .role-cell {
             min-width: 200px;
@@ -125,7 +201,6 @@
         .role-badge .badge {
             font-size: 0.875rem;
             padding: 0.35em 0.65em;
-            color: #000 !important;
         }
         
         .role-selector {
@@ -223,6 +298,11 @@
                     },
                     success: function(response) {
                         if (response.success) {
+                            // Находим все элементы, связанные с этой ролью
+                            const $select = $(`select[data-user-id="${userId}"]`);
+                            const $roleCell = $select.closest('.role-cell');
+                            const $roleBadge = $roleCell.find('.role-badge .badge');
+                            
                             // Обновляем бейдж с ролью
                             const roleBadge = $(`select[data-user-id="${userId}"]`)
                                 .closest('.role-cell')
@@ -232,6 +312,20 @@
                             roleBadge.text(response.role_display)
                                    .removeClass('bg-secondary bg-primary bg-warning bg-success bg-danger')
                                    .addClass(`bg-${response.role}`);
+                            
+                            // Обновляем выбранное значение в select
+                            $(this).val(response.role).trigger('change');
+                            
+                            console.log('Обновление завершено', {
+                                badge: {
+                                    classes: $badge.attr('class'),
+                                    text: $badge.text()
+                                },
+                                select: {
+                                    value: $select.val(),
+                                    text: $select.find('option:selected').text().trim()
+                                }
+                            });
                                     
                             // Показываем уведомление
                             const toast = new bootstrap.Toast(document.getElementById('toast'));
@@ -264,6 +358,40 @@
         </div>
     </div>
     
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Select2 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- Flatpickr Russian localization -->
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/ru.js"></script>
+    <!-- Custom JS -->
     <script src="{% static 'js/main.js' %}"></script>
+    
+    <script>
+    // Инициализация Select2 для всех select-элементов
+    $(document).ready(function() {
+        $('.select2').select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            placeholder: 'Выберите значение',
+            allowClear: true,
+            language: 'ru'
+        });
+        
+        // Инициализация Flatpickr для полей с датой
+        $('.datepicker').flatpickr({
+            dateFormat: 'Y-m-d',
+            locale: 'ru',
+            allowInput: true
+        });
+    });
+    </script>
+    
+    <!-- Контейнер для уведомлений -->
+    <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100"></div>
 </body>
 </html>

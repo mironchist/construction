@@ -3,7 +3,7 @@ from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
-from .models import ConstructionSite, SitePhoto, SiteComment
+from .models import ConstructionSite, SitePhoto, SiteComment, Task, TaskComment
 
 User = get_user_model()
 
@@ -47,9 +47,22 @@ class UserRegistrationForm(UserCreationForm):
 
 class UserEditForm(forms.ModelForm):
     """Форма редактирования профиля пользователя"""
+    ROLE_CHOICES = [
+        ('worker', 'Рабочий'),
+        ('foreman', 'Прораб'),
+        ('client', 'Заказчик'),
+    ]
+    
+    role = forms.ChoiceField(
+        label='Роль',
+        choices=ROLE_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        required=True
+    )
+    
     class Meta:
         model = User
-        fields = ('first_name', 'last_name', 'email', 'phone')
+        fields = ('first_name', 'last_name', 'email', 'phone', 'role')
         labels = {
             'first_name': 'Имя',
             'last_name': 'Фамилия',
@@ -239,7 +252,7 @@ class CommentForm(forms.ModelForm):
             'text': forms.Textarea(attrs={
                 'class': 'form-control',
                 'rows': 3,
-                'placeholder': 'Введите ваш комментарий',
+                'placeholder': 'Введите комментарий...',
                 'required': 'required',
                 'minlength': '3',
                 'maxlength': '1000'
@@ -282,3 +295,116 @@ class UserRoleForm(forms.ModelForm):
         # Устанавливаем текущую роль пользователя
         if self.instance and self.instance.pk:
             self.fields['role'].initial = self.instance.role
+
+
+class TaskForm(forms.ModelForm):
+    class Meta:
+        model = Task
+        fields = ['title', 'description', 'assigned_to', 'construction_site', 'deadline', 'status', 'priority']
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 4, 'class': 'form-control'}),
+            'deadline': forms.DateTimeInput(
+                attrs={
+                    'class': 'form-control',
+                    'type': 'datetime-local',
+                    'placeholder': 'дд.мм.гггг чч:мм'
+                },
+                format='%Y-%m-%dT%H:%M'
+            ),
+            'priority': forms.Select(attrs={'class': 'form-select'}),
+            'status': forms.Select(attrs={'class': 'form-select'}),
+            'assigned_to': forms.SelectMultiple(attrs={'class': 'form-select'}),
+        }
+        labels = {
+            'title': 'Название задачи',
+            'description': 'Описание',
+            'assigned_to': 'Исполнители',
+            'construction_site': 'Строительный объект',
+            'deadline': 'Срок выполнения',
+            'priority': 'Приоритет',
+            'status': 'Статус',
+        }
+    
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        
+        # Настройка queryset для исполнителей и объектов
+        if user and hasattr(user, 'role'):
+            # Для прораба - только его рабочие и его объекты
+            if user.role == 'foreman':
+                self.fields['assigned_to'].queryset = User.objects.filter(
+                    role='worker',
+                    worker_profile__foreman=user
+                )
+                self.fields['construction_site'].queryset = ConstructionSite.objects.filter(
+                    foreman=user
+                )
+            # Для админа - все рабочие и объекты
+            elif user.role == 'admin':
+                self.fields['assigned_to'].queryset = User.objects.filter(role='worker')
+                self.fields['construction_site'].queryset = ConstructionSite.objects.all()
+            
+            # Для обычных пользователей скрываем поле статуса
+            if user.role not in ['admin', 'foreman'] and 'status' in self.fields:
+                del self.fields['status']
+        
+        # Устанавливаем атрибуты для полей
+        for field_name, field in self.fields.items():
+            if field_name == 'assigned_to':
+                field.help_text = 'Удерживайте Ctrl (или Cmd на Mac) для выбора нескольких исполнителей'
+                field.required = True
+                field.widget.attrs.update({
+                    'class': 'form-select',
+                    'multiple': 'multiple',
+                    'data-placeholder': 'Выберите исполнителей'
+                })
+            elif field_name == 'deadline':
+                field.required = False
+                field.widget.attrs.update({
+                    'class': 'form-control',
+                    'placeholder': 'дд.мм.гггг чч:мм',
+                    'autocomplete': 'off'
+                })
+            elif field_name == 'status':
+                field.initial = 'new'
+                if user and user.role not in ['admin', 'foreman']:
+                    field.widget.attrs['disabled'] = 'disabled'
+            elif field_name == 'priority':
+                field.initial = 'medium'
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        # Можно добавить дополнительную валидацию при необходимости
+        return cleaned_data
+
+
+class TaskCommentForm(forms.ModelForm):
+    """Форма для добавления комментариев к задаче"""
+    class Meta:
+        model = TaskComment
+        fields = ['text']
+        widgets = {
+            'text': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+                'placeholder': 'Введите текст комментария...',
+                'required': 'required'
+            }),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        self.task = kwargs.pop('task', None)
+        super().__init__(*args, **kwargs)
+        self.fields['text'].label = ''
+    
+    def save(self, commit=True):
+        comment = super().save(commit=False)
+        if self.user:
+            comment.author = self.user
+        if self.task:
+            comment.task = self.task
+        if commit:
+            comment.save()
+        return comment

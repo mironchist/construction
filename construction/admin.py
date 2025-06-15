@@ -2,13 +2,34 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
-from .models import User, ConstructionSite, SitePhoto, SiteComment
+from .models import User, ConstructionSite, SitePhoto, SiteComment, Task
 
 # Настройка отображения пользовательской модели пользователя
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    list_display = ('username', 'email', 'first_name', 'last_name', 'role', 'is_staff')
+    list_display = ('username', 'email', 'first_name', 'last_name', 'get_colored_role', 'is_staff')
     list_filter = ('role', 'is_staff', 'is_superuser', 'is_active')
+    
+    class Media:
+        js = ('admin/js/update_role_display.js',)
+    
+    def get_colored_role(self, obj):
+        role = obj.get_role_display()
+        colors = {
+            'admin': '#dc3545',    # красный
+            'foreman': '#0d6efd',  # синий
+            'client': '#198754',   # зеленый
+            'worker': '#6c757d',   # серый
+        }
+        color = colors.get(obj.role, '#000000')  # черный по умолчанию
+        return format_html(
+            '<span class="role-badge-display" data-role="{}" style="background-color: {}; color: white; font-weight: bold; '
+            'padding: 2px 8px; border-radius: 12px; display: inline-block; min-width: 80px; text-align: center;">{}</span>',
+            obj.role, color, role
+        )
+    get_colored_role.short_description = 'Роль'
+    get_colored_role.allow_tags = True
+    get_colored_role.admin_order_field = 'role'
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
         (_('Personal info'), {'fields': ('first_name', 'last_name', 'email', 'phone')}),
@@ -109,3 +130,36 @@ class SiteCommentAdmin(admin.ModelAdmin):
     list_filter = ('created_date', 'author')
     search_fields = ('site__name', 'text')
     readonly_fields = ('created_date',)
+
+@admin.register(Task)
+class TaskAdmin(admin.ModelAdmin):
+    list_display = ('title', 'status', 'created_by', 'deadline', 'get_assigned_to', 'construction_site', 'created_at')
+    list_filter = ('status', 'created_at', 'deadline', 'created_by')
+    search_fields = ('title', 'description', 'created_by__username', 'assigned_to__username', 'construction_site__name')
+    list_editable = ('status',)
+    filter_horizontal = ('assigned_to',)
+    date_hierarchy = 'created_at'
+    
+    fieldsets = (
+        (None, {
+            'fields': ('title', 'description', 'status')
+        }),
+        ('Детали', {
+            'fields': (('created_by', 'assigned_to'), 'construction_site', 'deadline')
+        }),
+        ('Даты', {
+            'fields': (('created_at', 'updated_at'),),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('created_at', 'updated_at')
+    
+    def get_assigned_to(self, obj):
+        return ", ".join([user.get_full_name() or user.username for user in obj.assigned_to.all()])
+    get_assigned_to.short_description = 'Исполнители'
+    
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:  # Если объект создается, а не обновляется
+            obj.created_by = request.user
+        obj.save()

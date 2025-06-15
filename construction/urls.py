@@ -2,8 +2,8 @@ from django.urls import path
 from django.contrib.auth import views as auth_views
 from django.views.decorators.http import require_http_methods
 from . import views
+from .api import update_task_status
 
-# app_name = 'construction'  # Удаляем пространство имен
 
 urlpatterns = [
     # Аутентификация
@@ -68,4 +68,16 @@ urlpatterns = [
     path('users/<int:user_id>/update-role/', 
          require_http_methods(['POST'])(views.update_user_role_view), 
          name='update_user_role'),
+    
+    # Задачи
+    path('tasks/', views.task_list_view, name='task_list'),
+    path('tasks/create/', views.task_create_view, name='task_create'),
+    path('tasks/<int:pk>/', views.task_detail_view, name='task_detail'),
+    path('tasks/<int:pk>/edit/', views.task_edit_view, name='task_edit'),
+    path('tasks/<int:pk>/delete/', views.task_delete_view, name='task_delete'),
+    path('api/tasks/<int:pk>/update-status/', views.api_update_task_status, name='api_update_task_status'),
+    
+    # Комментарии к задачам
+    path('api/tasks/<int:task_id>/comments/add/', views.add_task_comment, name='add_task_comment'),
+    path('api/comments/<int:comment_id>/delete/', views.delete_task_comment, name='delete_task_comment'),
 ]

@@ -1,3 +1,89 @@
+/* Стили для задач */
+.task-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    border-left: 4px solid #6c757d;
+}
+
+.task-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+
+.task-status-new {
+    border-left-color: #ffc107;
+}
+
+.task-status-in_progress {
+    border-left-color: #0d6efd;
+}
+
+.task-status-completed {
+    border-left-color: #198754;
+}
+
+.task-overdue {
+    background-color: #fff3f3;
+}
+
+.task-priority-high {
+    border-left-color: #dc3545;
+}
+
+.task-priority-medium {
+    border-left-color: #fd7e14;
+}
+
+.task-priority-low {
+    border-left-color: #20c997;
+}
+
+/* Стили для чекбоксов в таблице */
+.table .form-check-input {
+    margin-top: 0;
+}
+
+/* Улучшенный внешний вид карточек */
+.card {
+    overflow: hidden;
+}
+
+.card-header {
+    font-weight: 600;
+}
+
+/* Стили для иконок в кнопках */
+.btn i {
+    margin-right: 0.25rem;
+}
+
+/* Адаптивные таблицы */
+.table-responsive {
+    overflow-x: auto;
+}
+
+/* Стили для статусов в таблице */
+.status-badge {
+    font-size: 0.8rem;
+    padding: 0.35em 0.65em;
+    font-weight: 500;
+}
+
+/* Стили для аватаров пользователей */
+.avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 0.5rem;
+}
+
+/* Стили для хлебных крошек */
+.breadcrumb {
+    background-color: #f8f9fa;
+    padding: 0.75rem 1rem;
+    border-radius: 0.25rem;
+}
+
 /* Основные стили */
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -90,17 +176,58 @@ body {
 /* Кастомные цвета для ролей */
 .bg-worker {
     background-color: #6c757d !important;
+    color: white !important;
 }
 
 .bg-foreman {
     background-color: #0d6efd !important;
+    color: white !important;
 }
 
 .bg-client {
     background-color: #198754 !important;
+    color: white !important;
 }
 
 .bg-admin {
+    background-color: #dc3545 !important;
+    color: white !important;
+}
+
+/* Стили для бейджей ролей */
+.role-badge .badge {
+    color: white !important;
+    font-weight: 500;
+    padding: 0.4em 0.8em !important;
+    font-size: 0.85em !important;
+    border-radius: 0.5rem !important;
+    text-transform: capitalize;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: 80px;
+    white-space: nowrap;
+}
+
+/* Гарантируем, что цвет текста будет белым */
+.badge {
+    color: white !important;
+}
+
+/* Явно задаем цвета для всех возможных ролей */
+.badge.bg-worker {
+    background-color: #6c757d !important;
+}
+
+.badge.bg-foreman {
+    background-color: #0d6efd !important;
+}
+
+.badge.bg-client {
+    background-color: #198754 !important;
+}
+
+.badge.bg-admin {
     background-color: #dc3545 !important;
 }
 

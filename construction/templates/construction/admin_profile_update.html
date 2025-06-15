@@ -62,16 +62,11 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label for="id_avatar" class="form-label">Аватар</label>
-                        {% if user_to_edit.avatar %}
-                            <div class="mb-2">
-                                <img src="{{ user_to_edit.avatar.url }}" alt="Аватар" class="img-thumbnail" style="max-width: 150px;">
-                            </div>
-                        {% endif %}
-                        {{ form.avatar }}
-                        {% if form.avatar.errors %}
+                        <label for="id_role" class="form-label">Роль</label>
+                        {{ form.role }}
+                        {% if form.role.errors %}
                             <div class="invalid-feedback d-block">
-                                {{ form.avatar.errors.0 }}
+                                {{ form.role.errors.0 }}
                             </div>
                         {% endif %}
                     </div>

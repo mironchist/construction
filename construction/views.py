@@ -1,18 +1,131 @@
+import json
 import logging
-from django.shortcuts import render, redirect, get_object_or_404
+from django.core.serializers.json import DjangoJSONEncoder
+from django.shortcuts import render, redirect, get_object_or_404, HttpResponseRedirect
+from django.urls import reverse, reverse_lazy
+from django.http import JsonResponse, HttpResponseForbidden
+from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
+from django.utils import timezone
+from django.db.models import Q
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.contrib import messages
+from django.template.loader import render_to_string
+from django.views.decorators.csrf import csrf_exempt
+
+from .models import Task, TaskComment, ConstructionSite, SiteComment, SitePhoto, User
+from .forms import TaskForm, TaskCommentForm, ConstructionSiteForm, SitePhotoForm, CommentForm, UserRegistrationForm, UserEditForm
+
+# Настройка логгера
+import logging
+logger = logging.getLogger(__name__)
 from django.contrib.auth import login, logout, authenticate, update_session_auth_hash
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
-from django.contrib.auth.forms import PasswordChangeForm
-from django.core.paginator import Paginator
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseForbidden, HttpResponseBadRequest
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
 from django.db.models import Q
-from .models import User, ConstructionSite, SitePhoto, SiteComment
-from .forms import UserRegistrationForm, UserEditForm, ConstructionSiteForm, SitePhotoForm, CommentForm, UserRoleForm
-
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.template.loader import render_to_string
+from .models import User, ConstructionSite, SitePhoto, SiteComment, Task
+from .forms import (UserRegistrationForm, UserEditForm, 
+                   ConstructionSiteForm, SitePhotoForm, 
+                   CommentForm, TaskForm)
 # Настройка логгера
 logger = logging.getLogger(__name__)
+
+@login_required
+def task_list_view(request):
+    """
+    Представление для отображения списка задач.
+    """
+    # Получаем задачи в зависимости от роли пользователя
+    if request.user.is_admin or (hasattr(request.user, 'role') and request.user.role == 'admin'):
+        # Администратор видит все задачи
+        tasks = Task.objects.all()
+    elif hasattr(request.user, 'role') and request.user.role == 'foreman':
+        # Прораб видит задачи, которые он создал или которые назначены его рабочим
+        tasks = Task.objects.filter(
+            Q(created_by=request.user) | 
+            Q(assigned_to__worker_profile__foreman=request.user)
+        ).distinct()
+    elif hasattr(request.user, 'role') and request.user.role == 'worker':
+        # Рабочий видит только свои задачи
+        tasks = Task.objects.filter(assigned_to=request.user)
+    elif hasattr(request.user, 'role') and request.user.role == 'client':
+        # Клиент видит задачи по своим объектам
+        tasks = Task.objects.filter(
+            Q(created_by=request.user) |
+            Q(construction_site__client=request.user)
+        ).distinct()
+    else:
+        # По умолчанию показываем только созданные пользователем задачи
+        tasks = Task.objects.filter(created_by=request.user)
+    
+    # Сортировка задач
+    sort_by = request.GET.get('sort_by', '-created_at')
+    tasks = tasks.order_by(sort_by)
+    
+    # Пагинация
+    paginator = Paginator(tasks, 10)  # Показываем по 10 задач на странице
+    page_number = request.GET.get('page')
+    
+    try:
+        tasks = paginator.page(page_number)
+    except PageNotAnInteger:
+        # Если страница не является целым числом, показываем первую страницу
+        tasks = paginator.page(1)
+    except EmptyPage:
+        # Если номер страницы больше максимального, показываем последнюю страницу
+        tasks = paginator.page(paginator.num_pages)
+    
+    context = {
+        'tasks': tasks,
+        'sort_by': sort_by,
+    }
+    
+    return render(request, 'construction/task_list.html', context)
+
+@login_required
+def task_detail_view(request, pk):
+    """
+    Представление для просмотра деталей задачи.
+    """
+    try:
+        logger.info(f"Попытка загрузить задачу с ID: {pk}")
+        task = get_object_or_404(Task, pk=pk)
+        logger.info(f"Задача найдена: {task.title}")
+        
+        # Проверка прав доступа
+        has_access = (
+            request.user == task.created_by or 
+            request.user in task.assigned_to.all() or 
+            request.user.is_admin or 
+            (hasattr(request.user, 'role') and request.user.role in ['admin', 'foreman'])
+        )
+        
+        logger.info(f"Пользователь {request.user.username} имеет доступ к задаче: {has_access}")
+        
+        if not has_access:
+            messages.error(request, 'У вас нет прав для просмотра этой задачи.')
+            logger.warning(f"Попытка доступа к задаче {pk} пользователем {request.user.username} без прав")
+            return redirect('task_list')
+        
+        context = {
+            'task': task,
+            'can_edit': request.user == task.created_by or request.user.is_admin or (hasattr(request.user, 'role') and request.user.role == 'foreman'),
+            'can_delete': request.user == task.created_by or request.user.is_admin,
+        }
+        
+        logger.info(f"Рендеринг шаблона для задачи {pk}")
+        return render(request, 'construction/task_detail.html', context)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке задачи {pk}: {str(e)}", exc_info=True)
+        messages.error(request, 'Произошла ошибка при загрузке задачи')
+        return redirect('task_list')
 
 # Аутентификация
 def login_view(request):
@@ -99,11 +212,23 @@ def admin_profile_update_view(request, user_id):
     if request.method == 'POST':
         form = UserEditForm(instance=user_to_edit, data=request.POST, files=request.FILES)
         if form.is_valid():
-            form.save()
-            messages.success(request, f'Профиль пользователя {user_to_edit.get_full_name()} успешно обновлен')
+            # Сохраняем форму, но не коммитим в БД, чтобы изменить роль
+            user = form.save(commit=False)
+            
+            # Обновляем роль, только если это не текущий пользователь
+            # (чтобы не снять самому себе права админа)
+            if user != request.user:
+                user.role = form.cleaned_data['role']
+            
+            user.save()
+            form.save_m2m()  # Сохраняем связи many-to-many, если они есть
+            
+            messages.success(request, 'Профиль пользователя успешно обновлен')
             return redirect('user_list')
     else:
         form = UserEditForm(instance=user_to_edit)
+        # Устанавливаем начальное значение роли
+        form.fields['role'].initial = user_to_edit.role
     
     return render(request, 'construction/admin_profile_update.html', {
         'form': form,
@@ -797,3 +922,617 @@ def delete_comment_view(request, pk):
             {'error': 'Произошла ошибка при удалении комментария'}, 
             status=500
         )
+
+
+# Представления для работы с задачами
+@login_required
+def task_list_view(request):
+    """Список задач с фильтрацией и сортировкой"""
+    # Получаем все задачи, к которым имеет доступ пользователь
+    tasks = Task.objects.filter(
+        Q(created_by=request.user) | Q(assigned_to=request.user)
+    ).distinct()
+    
+    # Фильтрация по статусу, если указан
+    status_filter = request.GET.get('status')
+    if status_filter and status_filter != 'all':
+        tasks = tasks.filter(status=status_filter)
+    
+    # Фильтрация по типу (созданные/назначенные)
+    task_type = request.GET.get('type')
+    if task_type == 'created':
+        tasks = tasks.filter(created_by=request.user)
+    elif task_type == 'assigned':
+        tasks = tasks.filter(assigned_to=request.user).exclude(created_by=request.user)
+    
+    # Фильтрация по приоритету, если указан
+    priority_filter = request.GET.get('priority')
+    if priority_filter and priority_filter != 'all':
+        tasks = tasks.filter(priority=priority_filter)
+    
+    # Сортировка
+    sort_by = request.GET.get('sort_by', '-created_at')
+    valid_sort_fields = ['created_at', 'deadline', 'priority', 'status']
+    sort_field = sort_by.lstrip('-')
+    
+    if sort_field not in valid_sort_fields:
+        sort_by = '-created_at'
+    
+    tasks = tasks.order_by(sort_by, '-created_at')
+    
+    # Пагинация
+    paginator = Paginator(tasks, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Контекст для шаблона
+    context = {
+        'page_obj': page_obj,
+        'tasks': page_obj.object_list,  # Добавляем список задач для итерации в шаблоне
+        'status_choices': [('all', 'Все статусы')] + list(Task.STATUS_CHOICES),
+        'priority_choices': [('all', 'Любой приоритет')] + list(Task.PRIORITY_CHOICES),
+        'current_status': status_filter if status_filter else 'all',
+        'current_priority': priority_filter if priority_filter else 'all',
+        'current_type': task_type if task_type else 'all',
+        'current_sort': sort_by,
+        'query_params': request.GET.urlencode()
+    }
+    return render(request, 'construction/task_list.html', context)
+
+
+@csrf_exempt
+@login_required
+def api_update_task_status(request, pk):
+    """
+    API-эндпоинт для обновления статуса задачи через AJAX.
+    
+    Принимает POST-запрос с параметром 'status'.
+    Возвращает JSON с результатом операции.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Метод не разрешен'}, status=405)
+    
+    try:
+        task = Task.objects.get(pk=pk)
+        
+        # Проверяем права доступа
+        if not (request.user == task.created_by or 
+                request.user in task.assigned_to.all() or 
+                request.user.is_superuser or 
+                request.user.is_admin):
+            return JsonResponse(
+                {'success': False, 'error': 'У вас нет прав на изменение этой задачи'}, 
+                status=403
+            )
+        
+        # Получаем новый статус из запроса
+        new_status = request.POST.get('status')
+        if not new_status:
+            return JsonResponse(
+                {'success': False, 'error': 'Не указан новый статус'}, 
+                status=400
+            )
+        
+        # Проверяем, что статус допустимый
+        if new_status not in dict(Task.STATUS_CHOICES):
+            return JsonResponse(
+                {'success': False, 'error': 'Недопустимый статус задачи'}, 
+                status=400
+            )
+        
+        # Обновляем статус
+        task.status = new_status
+        task.save()
+        
+        return JsonResponse({
+            'success': True,
+            'status_display': task.get_status_display(),
+            'status_color': task.get_status_color()
+        })
+        
+    except Task.DoesNotExist:
+        return JsonResponse(
+            {'success': False, 'error': 'Задача не найдена'}, 
+            status=404
+        )
+    except Exception as e:
+        logger.error(f'Ошибка при обновлении статуса задачи: {str(e)}')
+        return JsonResponse(
+            {'success': False, 'error': 'Внутренняя ошибка сервера'}, 
+            status=500
+        )
+
+
+@login_required
+def task_detail_view(request, pk):
+    """
+    Детальный просмотр задачи с возможностью изменения статуса и комментариями.
+    
+    Разрешен доступ:
+    - Создателю задачи
+    - Назначенным исполнителям
+    - Суперпользователям
+    - Администраторам
+    """
+    print(f"\n=== DEBUG: task_detail_view called with pk={pk} ===")
+    print(f"User: {request.user} (ID: {request.user.id if request.user.is_authenticated else 'anon'})")
+    
+    try:
+        task = get_object_or_404(Task, pk=pk)
+        print(f"Task found: {task} (created by: {task.created_by}, assigned to: {list(task.assigned_to.all())})")
+        
+        # Проверка прав доступа
+        if not (request.user == task.created_by or 
+                request.user in task.assigned_to.all() or 
+                request.user.is_superuser or 
+                request.user.is_admin):
+            messages.error(request, 'У вас нет прав для просмотра этой задачи.')
+            return redirect('task_list')
+        
+        # Обработка изменения статуса
+        if request.method == 'POST' and 'status' in request.POST:
+            new_status = request.POST.get('status')
+            if new_status in dict(Task.STATUS_CHOICES):
+                task.status = new_status
+                task.save()
+                messages.success(request, 'Статус задачи обновлен')
+                return redirect('task_detail', pk=task.pk)
+            else:
+                messages.error(request, 'Недопустимый статус задачи')
+        
+        # Получаем комментарии к задаче
+        comments = task.comments.select_related('author').order_by('created_at')
+        
+        # Форма для добавления комментария
+        comment_form = TaskCommentForm(user=request.user, task=task)
+        
+        # Определяем, может ли пользователь изменять статус
+        can_change_status = (
+            request.user in task.assigned_to.all() or 
+            request.user == task.created_by or 
+            request.user.is_superuser or 
+            request.user.is_admin
+        )
+        
+        # Формируем список статусов с цветами и подсказками
+        status_choices = [
+            {
+                'value': 'new',
+                'display': 'Новая',
+                'color': 'secondary',
+                'help_text': 'Задача только создана и ожидает выполнения'
+            },
+            {
+                'value': 'in_progress',
+                'display': 'В работе',
+                'color': 'primary',
+                'help_text': 'Задача в процессе выполнения'
+            },
+            {
+                'value': 'completed',
+                'display': 'Завершена',
+                'color': 'success',
+                'help_text': 'Задача успешно завершена'
+            },
+            {
+                'value': 'cancelled',
+                'display': 'Отменена',
+                'color': 'danger',
+                'help_text': 'Задача отменена и не будет выполняться'
+            }
+        ]
+        
+        context = {
+            'task': task,
+            'comments': comments,
+            'comment_form': comment_form,
+            'can_edit': request.user == task.created_by or request.user.is_superuser or request.user.is_admin,
+            'can_accept': request.user in task.assigned_to.all(),
+            'can_change_status': can_change_status,
+            'status_choices': status_choices,
+            'now': timezone.now(),
+            'title': f'Задача: {task.title}'
+        }
+        return render(request, 'construction/task_detail.html', context)
+        
+    except Exception as e:
+        logger.error(f'Ошибка при просмотре задачи {pk}: {str(e)}', exc_info=True)
+        messages.error(request, 'Произошла ошибка при загрузке задачи')
+        return redirect('task_list')
+
+
+@login_required
+def add_task_comment(request, task_id):
+    """
+    Добавление комментария к задаче.
+    
+    Доступно для:
+    - Создателя задачи
+    - Назначенных исполнителей
+    - Администраторов
+    """
+    if request.method == 'POST' and request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        try:
+            task = get_object_or_404(Task, pk=task_id)
+            
+            # Проверка прав доступа
+            if not (request.user == task.created_by or 
+                    request.user in task.assigned_to.all() or 
+                    request.user.is_superuser or 
+                    request.user.is_admin):
+                return JsonResponse({'success': False, 'error': 'Нет прав для добавления комментария'}, status=403)
+            
+            form = TaskCommentForm(request.POST, user=request.user, task=task)
+            
+            if form.is_valid():
+                comment = form.save(commit=False)
+                comment.author = request.user
+                comment.task = task
+                comment.save()
+                
+                # Рендерим новый комментарий в HTML
+                comment_html = render_to_string('construction/includes/task_comment.html', {
+                    'comment': comment,
+                    'user': request.user
+                })
+                
+                return JsonResponse({
+                    'success': True,
+                    'comment_html': comment_html,
+                    'comment_id': comment.id
+                })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'errors': form.errors
+                }, status=400)
+                
+        except Exception as e:
+            logger.error(f'Ошибка при добавлении комментария к задаче {task_id}: {str(e)}', exc_info=True)
+            return JsonResponse({
+                'success': False,
+                'error': 'Ошибка при добавлении комментария'
+            }, status=500)
+    
+    return JsonResponse({'success': False, 'error': 'Неверный запрос'}, status=400)
+
+
+@login_required
+def delete_task_comment(request, comment_id):
+    """
+    Удаление комментария к задаче.
+    
+    Доступно для:
+    - Автора комментария
+    - Создателя задачи
+    - Администраторов
+    """
+    if request.method == 'POST' and request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        try:
+            comment = get_object_or_404(TaskComment, pk=comment_id)
+            task = comment.task
+            
+            # Проверка прав доступа
+            if not (request.user == comment.author or 
+                    request.user == task.created_by or 
+                    request.user.is_superuser or 
+                    request.user.is_admin):
+                return JsonResponse({'success': False, 'error': 'Нет прав для удаления комментария'}, status=403)
+            
+            comment_id = comment.id
+            comment.delete()
+            
+            return JsonResponse({
+                'success': True,
+                'comment_id': comment_id
+            })
+            
+        except Exception as e:
+            logger.error(f'Ошибка при удалении комментария {comment_id}: {str(e)}', exc_info=True)
+            return JsonResponse({
+                'success': False,
+                'error': 'Ошибка при удалении комментария'
+            }, status=500)
+    
+    return JsonResponse({'success': False, 'error': 'Неверный запрос'}, status=400)
+
+
+@login_required
+def task_create_view(request):
+    """
+    Создание новой задачи.
+    
+    Доступно для:
+    - Администраторов
+    - Прорабов
+    """
+    # Проверка прав доступа
+    if not request.user.is_authenticated or request.user.role not in ['admin', 'foreman']:
+        messages.error(request, 'У вас нет прав для создания задач')
+        return redirect('home')
+    
+    # Получаем список доступных исполнителей
+    if request.user.role == 'admin':
+        available_workers = User.objects.filter(role='worker')
+    else:  # foreman
+        available_workers = User.objects.filter(
+            role='worker',
+            worker_profile__foreman=request.user
+        )
+    
+    # Формируем queryset для поля assigned_to
+    assigned_to_queryset = available_workers
+    
+    if request.method == 'POST':
+        form = TaskForm(request.POST, user=request.user)
+        form.fields['assigned_to'].queryset = assigned_to_queryset
+        
+        if form.is_valid():
+            try:
+                task = form.save(commit=False)
+                task.created_by = request.user
+                
+                # Устанавливаем статус по умолчанию для новых задач
+                if not task.pk:  # Только для новых задач
+                    task.status = 'new'
+                
+                # Сохраняем приоритет
+                task.priority = form.cleaned_data.get('priority', 'medium')
+                
+                # Сохраняем задачу
+                task.save()
+                
+                # Сохраняем many-to-many отношения (исполнителей)
+                if 'assigned_to' in form.cleaned_data:
+                    task.assigned_to.set(form.cleaned_data['assigned_to'])
+                
+                # Обновляем объект задачи, чтобы сохранить связи many-to-many
+                form.save_m2m()
+                
+                # Логируем успешное создание задачи
+                logger.info(f'Задача успешно создана: {task.title} (ID: {task.id})')
+                logger.info(f'Исполнители: {list(task.assigned_to.values_list("username", flat=True))}')
+                logger.info(f'Статус: {task.status}, Приоритет: {task.priority}')
+                
+                messages.success(request, 'Задача успешно создана')
+                return redirect('task_detail', pk=task.pk)
+                
+            except Exception as e:
+                logger.error(f'Ошибка при сохранении задачи: {str(e)}')
+                logger.exception('Детали ошибки:')
+                messages.error(request, f'Произошла ошибка при сохранении задачи: {str(e)}')
+        else:
+            logger.error(f'Ошибки в форме: {form.errors}')
+            messages.error(request, 'Пожалуйста, исправьте ошибки в форме')
+    else:
+        # GET запрос - создаем новую форму
+        form = TaskForm(user=request.user)
+        form.fields['assigned_to'].queryset = assigned_to_queryset
+        # Устанавливаем начальные значения
+        form.fields['status'].initial = 'new'
+        form.fields['priority'].initial = 'medium'
+    
+    # Подготавливаем данные о пользователях для Select2
+    users_data = []
+    for user in assigned_to_queryset:
+        avatar_url = ''
+        if hasattr(user, 'avatar') and user.avatar:
+            try:
+                avatar_url = user.avatar.url
+            except (ValueError, AttributeError):
+                pass
+                
+        users_data.append({
+            'id': user.id,
+            'text': json.dumps({
+                'full_name': user.get_full_name(),
+                'avatar': avatar_url,
+                'role_display': user.get_role_display()
+            }),
+            'selected': False  # По умолчанию никто не выбран при создании новой задачи
+        })
+    
+    # Обновляем поле assigned_to с новыми данными
+    form.fields['assigned_to'].choices = [(user['id'], user['text']) for user in users_data]
+    
+    # Создаем контекст для шаблона
+    context = {
+        'title': 'Создать задачу',
+        'form': form,
+        'users_data': json.dumps(users_data, cls=DjangoJSONEncoder)
+    }
+    return render(request, 'construction/task_form.html', context)
+
+
+@login_required
+def task_edit_view(request, pk):
+    """
+    Редактирование существующей задачи.
+    
+    Доступно для:
+    - Создателя задачи
+    - Администраторов
+    - Прорабов (для своих задач и задач подчиненных)
+    """
+    task = get_object_or_404(Task, pk=pk)
+    
+    # Проверка прав доступа
+    can_edit = (
+        task.created_by == request.user or 
+        request.user.is_superuser or 
+        request.user.role in ['admin'] or
+        (request.user.role == 'foreman' and 
+         (task.created_by == request.user or 
+          task.assigned_to.filter(worker_profile__foreman=request.user).exists()))
+    )
+    
+    if not can_edit:
+        messages.error(request, 'У вас нет прав для редактирования этой задачи')
+        return redirect('task_detail', pk=task.pk)
+    
+    # Получаем список доступных исполнителей
+    if request.user.role == 'admin':
+        available_workers = User.objects.filter(role='worker')
+    else:  # foreman
+        available_workers = User.objects.filter(
+            role='worker',
+            worker_profile__foreman=request.user
+        )
+    
+    if request.method == 'POST':
+        form = TaskForm(request.POST, instance=task, user=request.user)
+        form.fields['assigned_to'].queryset = available_workers
+        
+        # Для существующей задачи сохраняем текущий статус, если пользователь не может его менять
+        if request.user.role not in ['admin', 'foreman'] and 'status' in form.fields:
+            form.data = form.data.copy()
+            form.data['status'] = task.status
+            
+        if form.is_valid():
+            try:
+                task = form.save(commit=False)
+                task.save()
+                
+                # Сохраняем many-to-many отношения (исполнителей)
+                if 'assigned_to' in form.cleaned_data:
+                    task.assigned_to.set(form.cleaned_data['assigned_to'])
+                form.save_m2m()
+                
+                messages.success(request, '✅ Задача успешно обновлена')
+                return redirect('task_detail', pk=task.pk)
+                
+            except Exception as e:
+                logger.error(f'Ошибка при обновлении задачи {pk}: {str(e)}', exc_info=True)
+                messages.error(request, f'Произошла ошибка при обновлении задачи: {str(e)}')
+    else:
+        form = TaskForm(instance=task, user=request.user)
+        form.fields['assigned_to'].queryset = available_workers
+    
+    # Подготавливаем данные о пользователях для Select2
+    users_data = []
+    for user in available_workers:
+        avatar_url = ''
+        if hasattr(user, 'avatar') and user.avatar:
+            try:
+                avatar_url = user.avatar.url
+            except (ValueError, AttributeError):
+                pass
+                
+        users_data.append({
+            'id': user.id,
+            'text': json.dumps({
+                'full_name': user.get_full_name(),
+                'avatar': avatar_url,
+                'role_display': user.get_role_display()
+            }),
+            'selected': task.assigned_to.filter(pk=user.pk).exists()
+        })
+    
+    # Обновляем поле assigned_to с новыми данными
+    form.fields['assigned_to'].choices = [(user['id'], user['text']) for user in users_data]
+    
+    context = {
+        'form': form,
+        'title': f'Редактирование задачи: {task.title}',
+        'task': task,
+        'users_data': json.dumps(users_data, cls=DjangoJSONEncoder),
+        'submit_btn_text': 'Сохранить изменения',
+        'submit_btn_class': 'btn-primary',
+        'cancel_url': reverse('task_detail', kwargs={'pk': task.pk})
+    }
+    return render(request, 'construction/task_form.html', context)
+
+
+@login_required
+def task_delete_view(request, pk):
+    """
+    Удаление задачи.
+    
+    Доступно для:
+    - Создателя задачи
+    - Администраторов
+    - Прорабов (только для своих задач и задач своих подчиненных)
+    """
+    task = get_object_or_404(Task, pk=pk)
+    
+    # Проверка прав доступа
+    can_delete = (
+        task.created_by == request.user or 
+        request.user.is_superuser or 
+        request.user.is_admin or
+        (request.user.role == 'foreman' and 
+         (task.created_by == request.user or 
+          task.assigned_to.filter(worker_profile__foreman=request.user).exists()))
+    )
+    
+    if not can_delete:
+        messages.error(request, 'У вас нет прав для удаления этой задачи')
+        return redirect('task_detail', pk=task.pk)
+    
+    if request.method == 'POST':
+        try:
+            task_title = task.title
+            task.delete()
+            messages.success(request, f'✅ Задача "{task_title}" успешно удалена')
+            return redirect('task_list')
+        except Exception as e:
+            logger.error(f'Ошибка при удалении задачи {pk}: {str(e)}', exc_info=True)
+            messages.error(request, f'Произошла ошибка при удалении задачи: {str(e)}')
+            return redirect('task_detail', pk=task.pk)
+    
+    # Подсчет связанных объектов для предупреждения
+    related_objects = []
+    
+    # Проверяем, есть ли связанные комментарии
+    if hasattr(task, 'comments') and task.comments.exists():
+        related_objects.append(f'комментарии ({task.comments.count()})')
+    
+    context = {
+        'task': task,
+        'related_objects': related_objects,
+        'cancel_url': reverse('task_detail', kwargs={'pk': task.pk})
+    }
+    return render(request, 'construction/task_confirm_delete.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def api_update_task_status(request, pk):
+    """Обновление статуса задачи через AJAX"""
+    try:
+        data = json.loads(request.body)
+        new_status = data.get('status')
+        
+        if not new_status:
+            return JsonResponse({'success': False, 'error': 'Статус не указан'}, status=400)
+            
+        # Получаем задачу и проверяем права доступа
+        task = get_object_or_404(Task, pk=pk)
+        if request.user not in task.assigned_to.all() and request.user != task.created_by:
+            return JsonResponse(
+                {'success': False, 'error': 'У вас нет прав на изменение этой задачи'}, 
+                status=403
+            )
+        
+        # Проверяем, что статус допустимый
+        if new_status not in dict(Task.STATUS_CHOICES).keys():
+            return JsonResponse(
+                {'success': False, 'error': 'Недопустимый статус'}, 
+                status=400
+            )
+        
+        # Обновляем статус
+        task.status = new_status
+        task.save()
+        
+        # Возвращаем обновленные данные
+        return JsonResponse({
+            'success': True,
+            'status': dict(Task.STATUS_CHOICES).get(new_status, 'Неизвестно'),
+            'status_class': f'status-{task.status}'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Неверный формат данных'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

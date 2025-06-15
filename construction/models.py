@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.conf import settings
 
 # Кастомная модель пользователя с ролями
 class User(AbstractUser):
@@ -135,9 +136,157 @@ class SiteComment(models.Model):
     created_date = models.DateTimeField('Дата создания', auto_now_add=True)
     
     def __str__(self):
-        return f"Комментарий от {self.author} к {self.site.name}"
+        return f"Комментарий от {self.author.username} к объекту {self.site.name}"
     
     class Meta:
         verbose_name = 'Комментарий к объекту'
         verbose_name_plural = 'Комментарии к объектам'
         ordering = ['-created_date']
+
+# Модель для задач
+class Task(models.Model):
+    STATUS_CHOICES = [
+        ('new', 'Новая'),
+        ('in_progress', 'В работе'),
+        ('completed', 'Выполнена'),
+    ]
+    
+    PRIORITY_CHOICES = [
+        ('low', 'Низкий'),
+        ('medium', 'Средний'),
+        ('high', 'Высокий'),
+    ]
+    
+    title = models.CharField('Название', max_length=200)
+    description = models.TextField('Описание', blank=True)
+    created_by = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='created_tasks',
+        verbose_name='Постановщик'
+    )
+    assigned_to = models.ManyToManyField(
+        User, 
+        related_name='assigned_tasks',
+        verbose_name='Исполнители'
+    )
+    construction_site = models.ForeignKey(
+        'ConstructionSite',
+        on_delete=models.CASCADE,
+        verbose_name='Строительный объект',
+        related_name='tasks',
+        null=True,
+        blank=True
+    )
+    deadline = models.DateTimeField('Срок выполнения', null=True, blank=True)
+    status = models.CharField(
+        'Статус', 
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='new'
+    )
+    priority = models.CharField(
+        'Приоритет',
+        max_length=10,
+        choices=PRIORITY_CHOICES,
+        default='medium',
+        help_text='Приоритет выполнения задачи'
+    )
+    created_at = models.DateTimeField('Дата создания', auto_now_add=True)
+    updated_at = models.DateTimeField('Дата обновления', auto_now=True)
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        verbose_name = 'Задача'
+        verbose_name_plural = 'Задачи'
+        ordering = ['-created_at']
+        
+    @property
+    def is_overdue(self):
+        """Проверяет, просрочена ли задача"""
+        if self.deadline and self.status != 'completed':
+            from django.utils import timezone
+            return self.deadline < timezone.now()
+            
+    def get_status_color(self):
+        """Возвращает цвет для отображения статуса"""
+        colors = {
+            'new': 'secondary',
+            'in_progress': 'primary',
+            'completed': 'success',
+            'cancelled': 'danger'
+        }
+        return colors.get(self.status, 'secondary')
+        
+    def get_priority_color(self):
+        """Возвращает цвет для отображения приоритета"""
+        colors = {
+            'low': 'info',
+            'medium': 'warning',
+            'high': 'danger'
+        }
+        return colors.get(self.priority, 'secondary')
+        
+    def get_status_display_with_color(self):
+        """Возвращает статус с HTML-разметкой для цвета"""
+        from django.utils.html import format_html
+        return format_html(
+            '<span class="badge bg-{}">{}</span>',
+            self.get_status_color(),
+            self.get_status_display()
+        )
+        
+    def get_priority_display_with_color(self):
+        """Возвращает приоритет с HTML-разметкой для цвета"""
+        return f'<span class="badge bg-{self.get_priority_color()}">{self.get_priority_display()}</span>'
+        
+    def get_absolute_url(self):
+        """Возвращает URL для детального просмотра задачи"""
+        from django.urls import reverse
+        try:
+            return reverse('task_detail', kwargs={'pk': self.pk})
+        except Exception as e:
+            # Логируем ошибку, но не падаем
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error generating URL for task {self.pk}: {str(e)}")
+            return f'/tasks/{self.pk}/'
+
+
+class TaskComment(models.Model):
+    """
+    Модель для комментариев к задачам.
+    """
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='comments',
+        verbose_name='Задача'
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name='Автор',
+        related_name='task_comments'
+    )
+    text = models.TextField('Текст комментария')
+    created_at = models.DateTimeField('Дата создания', auto_now_add=True)
+    updated_at = models.DateTimeField('Дата обновления', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Комментарий к задаче'
+        verbose_name_plural = 'Комментарии к задачам'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Комментарий {self.id} к задаче {self.task.id} от {self.author}'
+    
+    def can_edit(self, user):
+        """Проверяет, может ли пользователь редактировать комментарий"""
+        return user == self.author or user.is_staff
+    
+    def can_delete(self, user):
+        """Проверяет, может ли пользователь удалить комментарий"""
+        return user == self.author or user.is_staff

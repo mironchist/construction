@@ -1,0 +1,494 @@
+{% extends 'construction/base.html' %}
+{% load static %}
+
+{% block title %}{{ task.title }}{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'task_list' %}">Задачи</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ task.title|truncatechars:30 }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Заголовок и действия -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0">{{ task.title }}</h1>
+            <div class="btn-group">
+                {% if task.created_by == user or user.is_superuser %}
+                <a href="{% url 'task_edit' task.id %}" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-pencil"></i> Редактировать
+                </a>
+                {% endif %}
+                <a href="{% url 'task_list' %}" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left"></i> Назад
+                </a>
+            </div>
+        </div>
+        
+        <!-- Описание задачи -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0">Описание</h2>
+                {% if task.created_by == user or user.is_superuser %}
+                <a href="{% url 'task_edit' task.id %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-pencil"></i> Изменить
+                </a>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if task.description %}
+                    {{ task.description|linebreaksbr }}
+                {% else %}
+                    <p class="text-muted mb-0">Описание отсутствует</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Комментарии -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0">Комментарии</h2>
+                <span class="badge bg-primary rounded-pill">{{ task.comments.count }}</span>
+            </div>
+            <div class="card-body">
+                <form id="comment-form" method="post" action="{% url 'add_task_comment' task.id %}" class="mb-4">
+                    {% csrf_token %}
+                    <div class="input-group">
+                        <input type="text" 
+                               name="text" 
+                               id="comment-text"
+                               class="form-control" 
+                               placeholder="Добавьте комментарий..." 
+                               required>
+                        <button type="submit" class="btn btn-primary" id="submit-comment">
+                            <i class="bi bi-send"></i>
+                        </button>
+                    </div>
+                </form>
+
+                <div id="comments-container">
+                    {% for comment in task.comments.all %}
+                    <div class="comment-item d-flex mb-3">
+                        <div class="flex-shrink-0">
+                            <img src="https://ui-avatars.com/api/?name={{ comment.author.get_full_name|urlencode }}&size=40&background=0D6EFD&color=fff" 
+                                 alt="{{ comment.author.get_full_name }}" class="rounded-circle">
+                        </div>
+                        <div class="ms-3 flex-grow-1">
+                            <div class="bg-light rounded-3 p-3">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <h6 class="mb-0 fw-bold">{{ comment.author.get_full_name }}</h6>
+                                    <div class="d-flex align-items-center">
+                                        <small class="text-muted me-2" title="{{ comment.created_date|date:'d.m.Y H:i' }}">
+                                            {{ comment.created_date|timesince }} назад
+                                        </small>
+                                        {% if user == comment.author or user.is_superuser %}
+                                        <form action="{% url 'delete_task_comment' comment.id %}" method="post" class="ms-2 delete-comment-form">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="next" value="{{ request.path }}">
+                                            <button type="submit" class="btn btn-sm btn-link text-danger p-0" 
+                                                    title="Удалить комментарий">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <p class="mb-0">{{ comment.text }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted text-center py-3">Нет комментариев</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Боковая колонка -->
+    <div class="col-lg-4">
+        <!-- Информация о задаче -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Информация</h2>
+            </div>
+            <div class="card-body">
+                <!-- Статус и приоритет -->
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <span class="badge bg-{{ task.get_status_color }} fs-6">
+                        <i class="bi {% if task.status == 'completed' %}bi-check-circle{% else %}bi-circle{% endif %} me-1"></i>
+                        {{ task.get_status_display }}
+                    </span>
+                    <span class="badge bg-{{ task.get_priority_color }} fs-6">
+                        <i class="bi bi-flag-fill me-1"></i>
+                        {{ task.get_priority_display }}
+                    </span>
+                    {% if task.is_overdue %}
+                    <span class="badge bg-danger fs-6">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        Просрочена
+                    </span>
+                    {% endif %}
+                </div>
+                
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="text-muted">Создана</div>
+                            <div class="fw-medium">
+                                {{ task.created_at|date:"d.m.Y H:i" }}
+                                <div class="text-muted small">{{ task.created_by.get_full_name|default:task.created_by.username }}</div>
+                            </div>
+                        </div>
+                    </li>
+                    <li class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="text-muted">Срок выполнения</div>
+                            <div class="fw-medium">
+                                {{ task.deadline|date:"d.m.Y H:i" }}
+                                {% if task.is_overdue %}
+                                    <div class="text-danger small">Просрочена</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </li>
+                    {% if task.construction_site %}
+                    <li class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="text-muted">Объект</div>
+                            <div class="fw-medium">
+                                <a href="{% url 'object_detail' task.construction_site.id %}" class="text-decoration-none">
+                                    {{ task.construction_site.name }}
+                                </a>
+                            </div>
+                        </div>
+                    </li>
+                    {% endif %}
+                    <li class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="text-muted">Исполнители</div>
+                            <div class="text-end">
+                                {% if task.assigned_to.all %}
+                                    {% for user in task.assigned_to.all|slice:":3" %}
+                                        <div class="fw-medium">
+                                            {{ user.get_full_name|default:user.username }}
+                                            <small class="text-muted d-block">{{ user.get_role_display|default:"Без роли" }}</small>
+                                        </div>
+                                    {% endfor %}
+                                    {% if task.assigned_to.count > 3 %}
+                                        <span class="badge bg-secondary">+{{ task.assigned_to.count|add:"-3" }} еще</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">Не назначены</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+            
+
+            <!-- История изменений -->
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h2 class="h5 mb-0">История изменений</h2>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        История изменений будет доступна в следующем обновлении.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Контейнер для уведомлений -->
+<div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 11"></div>
+
+{% endblock %}
+// Функция для отмены активных запросов
+function cancelActiveRequests() {
+    Object.values(activeRequests).forEach(controller => {
+        if (controller) controller.abort();
+    });
+}
+
+// Функция для обновления статуса задачи
+function updateTaskStatus(taskId, newStatus) {
+    if (!confirm('Вы уверены, что хотите изменить статус задачи?')) {
+        return;
+    }
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (!csrfToken) {
+        console.error('CSRF токен не найден');
+        showToast('Ошибка', 'Не удалось обновить статус: отсутствует CSRF токен', 'error');
+        return;
+    }
+    
+    // Отменяем предыдущий запрос, если он есть
+    if (activeRequests.statusUpdate) {
+        activeRequests.statusUpdate.abort();
+    }
+    
+    const controller = new AbortController();
+    activeRequests.statusUpdate = controller;
+    
+    fetch(`/api/tasks/${taskId}/update-status/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrfToken.value,
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `status=${encodeURIComponent(newStatus)}`,
+        signal: controller.signal
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            // Обновляем интерфейс
+            const statusBadge = document.querySelector('.status-badge');
+            if (statusBadge) {
+                statusBadge.className = `badge bg-${data.status_color} status-badge`;
+                statusBadge.textContent = data.status_display;
+            }
+            
+            // Показываем уведомление
+            showToast('Успех', 'Статус задачи обновлен', 'success');
+        } else {
+            showToast('Ошибка', data.error || 'Не удалось обновить статус', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Ошибка', 'Произошла ошибка при обновлении статуса', 'danger');
+    });
+}
+
+// Функция для отображения уведомлений
+function showToast(title, message, type = 'info') {
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.className = 'position-fixed top-0 end-0 p-3';
+        toastContainer.style.zIndex = '1100';
+        document.body.appendChild(toastContainer);
+    }
+    
+    const toastId = 'toast-' + Date.now();
+    const toast = document.createElement('div');
+    toast.id = toastId;
+    toast.className = `toast align-items-center text-white bg-${type} border-0`;
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'assertive');
+    toast.setAttribute('aria-atomic', 'true');
+    
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                <strong>${title}</strong><br>${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Закрыть"></button>
+        </div>
+    `;
+    
+    toastContainer.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast, { autohide: true, delay: 5000 });
+    bsToast.show();
+    
+    // Удаляем уведомление из DOM после скрытия
+    toast.addEventListener('hidden.bs.toast', function () {
+        toast.remove();
+    });
+}
+
+// Обработка отправки формы комментария
+document.addEventListener('DOMContentLoaded', function() {
+    // Отменяем все активные запросы при размонтировании страницы
+    window.addEventListener('beforeunload', cancelActiveRequests);
+    
+    const commentForm = document.getElementById('add-comment-form');
+    if (commentForm) {
+        commentForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Отменяем предыдущий запрос, если он есть
+            if (activeRequests.commentSubmit) {
+                activeRequests.commentSubmit.abort();
+            }
+            
+            const controller = new AbortController();
+            activeRequests.commentSubmit = controller;
+            
+            const formData = new FormData(this);
+            const submitButton = this.querySelector('button[type="submit"]');
+            const originalButtonText = submitButton.innerHTML;
+            
+            // Блокируем кнопку отправки
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Отправка...';
+            
+            fetch(this.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                },
+                signal: controller.signal
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Очищаем форму
+                    this.reset();
+                    
+                    // Добавляем новый комментарий в список
+                    const commentsList = document.getElementById('comments-list');
+                    const emptyMessage = commentsList.querySelector('.text-muted');
+                    
+                    if (emptyMessage) {
+                        commentsList.innerHTML = data.comment_html;
+                    } else {
+                        commentsList.insertAdjacentHTML('beforeend', data.comment_html);
+                    }
+                    
+                    // Прокручиваем к новому комментарию
+                    const newComment = document.getElementById(`comment-${data.comment_id}`);
+                    if (newComment) {
+                        newComment.scrollIntoView({ behavior: 'smooth' });
+                        
+                        // Добавляем анимацию выделения
+                        newComment.classList.add('highlight');
+                        setTimeout(() => {
+                            newComment.classList.remove('highlight');
+                        }, 2000);
+                    }
+                    
+                    showToast('Успех', 'Комментарий добавлен', 'success');
+                } else {
+                    showToast('Ошибка', data.error || 'Не удалось добавить комментарий', 'danger');
+                    
+                    // Показываем ошибки валидации, если они есть
+                    if (data.errors) {
+                        for (const field in data.errors) {
+                            const input = this.querySelector(`[name="${field}"]`);
+                            if (input) {
+                                const feedback = input.nextElementSibling;
+                                if (feedback && feedback.classList.contains('invalid-feedback')) {
+                                    feedback.textContent = data.errors[field][0];
+                                    input.classList.add('is-invalid');
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                // Игнорируем ошибки отмененных запросов
+                if (error.name === 'AbortError') {
+                    console.log('Запрос отменен');
+                    return;
+                }
+                console.error('Ошибка при отправке комментария:', error);
+                showToast('Ошибка', 'Не удалось отправить комментарий', 'error');
+            })
+            .finally(() => {
+                // Очищаем контроллер после завершения запроса
+                activeRequests.commentSubmit = null;
+                
+                // Разблокируем кнопку отправки
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalButtonText;
+            });
+        });
+    }
+    
+    // Обработчик для удаления комментария
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.delete-comment')) {
+            e.preventDefault();
+            const button = e.target.closest('.delete-comment');
+            const commentId = button.dataset.commentId;
+            
+            if (confirm('Вы уверены, что хотите удалить этот комментарий?')) {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                
+                // Отменяем предыдущий запрос, если он есть
+                if (activeRequests.commentDelete) {
+                    activeRequests.commentDelete.abort();
+                }
+                
+                const controller = new AbortController();
+                activeRequests.commentDelete = controller;
+                
+                fetch(`/api/comments/${commentId}/delete/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: `comment_id=${commentId}`,
+                    signal: controller.signal
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        const commentElement = document.getElementById(`comment-${commentId}`);
+                        if (commentElement) {
+                            commentElement.remove();
+                            showToast('Успех', 'Комментарий удален', 'success');
+                            
+                            // Если больше нет комментариев, показываем сообщение
+                            const commentsList = document.getElementById('comments-list');
+                            if (commentsList && commentsList.children.length === 0) {
+                                commentsList.innerHTML = '<div class="text-muted text-center py-3">Комментариев пока нет. Будьте первым, кто оставит комментарий!</div>';
+                            }
+                        }
+                    } else {
+                        showToast('Ошибка', data.error || 'Не удалось удалить комментарий', 'danger');
+                    }
+                })
+                .catch(error => {
+                    // Игнорируем ошибки отмененных запросов
+                    if (error.name === 'AbortError') {
+                        console.log('Запрос отменен');
+                        return;
+                    }
+                    console.error('Ошибка при удалении комментария:', error);
+                    showToast('Ошибка', 'Не удалось удалить комментарий', 'error');
+                })
+                .finally(() => {
+                    // Очищаем контроллер после завершения запроса
+                    activeRequests.commentDelete = null;
+                });
+            }
+        }
+    });
+    
+    // Инициализация всех тултипов
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+
+// Очищаем все активные запросы при размонтировании страницы
+window.addEventListener('unload', cancelActiveRequests);
+</script>
