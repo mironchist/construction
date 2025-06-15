@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import gettext_lazy as _
+from django.utils.html import format_html
 from .models import User, ConstructionSite, SitePhoto, SiteComment
 
 # Настройка отображения пользовательской модели пользователя
@@ -27,8 +28,14 @@ class CustomUserAdmin(UserAdmin):
 class SitePhotoInline(admin.TabularInline):
     model = SitePhoto
     extra = 1
-    fields = ('photo', 'uploaded_by', 'upload_date', 'comment')
-    readonly_fields = ('upload_date', 'uploaded_by')
+    fields = ('photo_preview', 'photo', 'uploaded_by', 'upload_date', 'comment')
+    readonly_fields = ('photo_preview', 'upload_date', 'uploaded_by')
+    
+    def photo_preview(self, obj):
+        if obj.photo:
+            return format_html('<img src="{}" style="max-height: 100px;" />', obj.photo.url)
+        return "Нет фото"
+    photo_preview.short_description = 'Предпросмотр'
 
     def save_model(self, request, obj, form, change):
         if not obj.uploaded_by_id:
@@ -43,11 +50,22 @@ class SiteCommentInline(admin.TabularInline):
 
 @admin.register(ConstructionSite)
 class ConstructionSiteAdmin(admin.ModelAdmin):
-    list_display = ('name', 'status', 'progress', 'start_date', 'end_date', 'foreman', 'client')
-    list_filter = ('status', 'start_date', 'end_date')
-    search_fields = ('name', 'address', 'description')
-    list_editable = ('status', 'progress')
+    list_display = ('name', 'status', 'progress_bar', 'start_date', 'end_date', 'foreman', 'client')
+    list_filter = ('status', 'start_date', 'end_date', 'foreman', 'client')
+    search_fields = ('name', 'address', 'description', 'foreman__username', 'client__username')
+    list_editable = ('status',)
     inlines = [SitePhotoInline, SiteCommentInline]
+    
+    def progress_bar(self, obj):
+        return format_html(
+            '<div class="progress" style="width:100px">'
+            '<div class="progress-bar" role="progressbar" style="width: {}%" '
+            'aria-valuenow="{}" aria-valuemin="0" aria-valuemax="100">{}%</div>'
+            '</div>',
+            obj.progress, obj.progress, obj.progress
+        )
+    progress_bar.short_description = 'Прогресс'
+    progress_bar.admin_order_field = 'progress'
     fieldsets = (
         (None, {
             'fields': ('name', 'address', 'description')
@@ -67,10 +85,23 @@ class ConstructionSiteAdmin(admin.ModelAdmin):
 # Регистрация оставшихся моделей
 @admin.register(SitePhoto)
 class SitePhotoAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'site', 'uploaded_by', 'upload_date')
-    list_filter = ('upload_date', 'uploaded_by')
-    search_fields = ('site__name', 'comment')
-    readonly_fields = ('upload_date',)
+    list_display = ('photo_preview', 'site_link', 'uploaded_by', 'upload_date')
+    list_filter = ('upload_date', 'uploaded_by', 'site__status')
+    search_fields = ('site__name', 'comment', 'uploaded_by__username')
+    readonly_fields = ('upload_date', 'photo_preview')
+    list_select_related = ('site', 'uploaded_by')
+    
+    def photo_preview(self, obj):
+        if obj.photo:
+            return format_html('<img src="{}" style="max-height: 100px;" />', obj.photo.url)
+        return "Нет фото"
+    photo_preview.short_description = 'Фото'
+    
+    def site_link(self, obj):
+        url = f'/admin/construction/constructionsite/{obj.site.id}/change/'
+        return format_html('<a href="{}">{}</a>', url, obj.site.name)
+    site_link.short_description = 'Объект'
+    site_link.admin_order_field = 'site__name'
 
 @admin.register(SiteComment)
 class SiteCommentAdmin(admin.ModelAdmin):
