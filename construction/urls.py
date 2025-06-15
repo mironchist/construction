@@ -58,6 +58,7 @@ urlpatterns = [
     
     # API для AJAX запросов
     path('api/objects/<int:pk>/photos/', views.api_object_photos, name='api_object_photos'),
+    path('api/photos/<int:pk>/delete/', views.api_delete_photo, name='api_delete_photo'),
     path('api/objects/<int:pk>/comments/', views.api_object_comments, name='api_object_comments'),
     path('api/objects/<int:pk>/comments/add/', views.api_add_comment, name='api_add_comment'),
     path('api/comments/<int:pk>/delete/', views.delete_comment_view, name='api_delete_comment'),

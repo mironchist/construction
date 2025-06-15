@@ -553,6 +553,82 @@ def update_user_role_view(request, user_id):
             status=500
         )
 
+@login_required
+@require_http_methods(["POST"])
+def api_delete_photo(request, pk):
+    """
+    Удаление фотографии объекта.
+    
+    Доступно только для администраторов, прорабов и владельцев объекта.
+    """
+    print(f"\n=== Начало обработки запроса на удаление фотографии {pk} ===")
+    print(f"Пользователь: {request.user.id} ({request.user.username})")
+    print(f"Метод: {request.method}")
+    print(f"Заголовки: {dict(request.headers)}")
+    print(f"POST данные: {dict(request.POST)}")
+    
+    # Проверяем, что это AJAX-запрос
+    if not request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        print("Ошибка: не AJAX-запрос")
+        return JsonResponse(
+            {'error': 'Неверный тип запроса'}, 
+            status=400
+        )
+    
+    try:
+        # Получаем фотографию
+        photo = SitePhoto.objects.select_related('site').get(pk=pk)
+        print(f"Найдена фотография: {photo}")
+        
+        # Получаем связанный объект
+        obj = photo.site
+        print(f"Объект: {obj} (ID: {obj.id})")
+        
+        # Проверка прав доступа
+        can_delete = (
+            request.user.role == 'admin' or 
+            (hasattr(obj, 'foreman') and obj.foreman == request.user) or
+            (hasattr(obj, 'client') and obj.client == request.user)
+        )
+        
+        if not can_delete:
+            print("Ошибка: недостаточно прав")
+            return JsonResponse(
+                {'error': 'У вас нет прав на удаление этой фотографии'}, 
+                status=403
+            )
+        
+        # Получаем путь к файлу перед удалением
+        photo_path = photo.photo.path if photo.photo else 'неизвестно'
+        print(f"Удаление фотографии. Путь к файлу: {photo_path}")
+        
+        # Удаляем запись из базы данных (файл удалится автоматически)
+        photo.delete()
+        print("Фотография успешно удалена")
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Фотография успешно удалена',
+            'object_id': obj.id
+        })
+        
+    except SitePhoto.DoesNotExist:
+        error_msg = f'Фотография с ID {pk} не найдена'
+        print(error_msg)
+        return JsonResponse(
+            {'error': error_msg}, 
+            status=404
+        )
+    except Exception as e:
+        error_msg = f'Ошибка при удалении фотографии: {str(e)}'
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        return JsonResponse(
+            {'error': 'Произошла внутренняя ошибка сервера: ' + str(e)}, 
+            status=500
+        )
+
 # API представления
 @login_required
 def api_object_photos(request, pk):
