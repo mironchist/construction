@@ -64,33 +64,70 @@ class UserEditForm(forms.ModelForm):
 
 class ConstructionSiteForm(forms.ModelForm):
     """Форма для создания и редактирования строительного объекта"""
+    status = forms.ChoiceField(
+        choices=ConstructionSite.STATUS_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Статус объекта',
+        required=True
+    )
+    
     class Meta:
         model = ConstructionSite
-        fields = ('name', 'address', 'start_date', 'end_date', 'description', 'client', 'foreman')
+        fields = ('name', 'address', 'start_date', 'end_date', 'description', 'status', 'client', 'foreman', 'workers')
         widgets = {
-            'start_date': forms.DateInput(attrs={'type': 'date'}),
-            'end_date': forms.DateInput(attrs={'type': 'date'}),
-            'description': forms.Textarea(attrs={'rows': 3}),
+            'start_date': forms.DateInput(
+                format='%Y-%m-%d',
+                attrs={
+                    'type': 'date',
+                    'class': 'form-control',
+                }
+            ),
+            'end_date': forms.DateInput(
+                format='%Y-%m-%d',
+                attrs={
+                    'type': 'date',
+                    'class': 'form-control',
+                }
+            ),
+            'description': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
             'client': forms.Select(attrs={'class': 'form-select'}),
             'foreman': forms.Select(attrs={'class': 'form-select'}),
+            'workers': forms.SelectMultiple(attrs={'class': 'form-select'}),
         }
-        labels = {
-            'name': 'Название объекта',
-            'address': 'Адрес',
-            'start_date': 'Дата начала работ',
-            'end_date': 'Планируемая дата окончания',
-            'description': 'Описание',
-            'client': 'Заказчик (необязательно)',
-            'foreman': 'Ответственный прораб (необязательно)',
-        }
-        help_texts = {
-            'client': 'Выберите заказчика, если он зарегистрирован в системе',
-            'foreman': 'Выберите прораба, если он зарегистрирован в системе',
-        }
-    
-    def __init__(self, user, *args, **kwargs):
+        
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
-        self.user = user
+        
+        # Устанавливаем формат даты для правильного отображения
+        for field_name in ['start_date', 'end_date']:
+            if field_name in self.fields:
+                self.fields[field_name].input_formats = ['%Y-%m-%d']
+                if self.instance and getattr(self.instance, field_name):
+                    self.fields[field_name].widget.attrs['value'] = getattr(self.instance, field_name).strftime('%Y-%m-%d')
+        
+        # Устанавливаем метки полей
+        self.fields['name'].label = 'Название объекта'
+        self.fields['address'].label = 'Адрес'
+        self.fields['start_date'].label = 'Дата начала работ'
+        self.fields['end_date'].label = 'Планируемая дата окончания'
+        self.fields['description'].label = 'Описание'
+        self.fields['status'].label = 'Статус объекта'
+        if 'client' in self.fields:
+            self.fields['client'].label = 'Заказчик (необязательно)'
+        if 'foreman' in self.fields:
+            self.fields['foreman'].label = 'Ответственный прораб (необязательно)'
+        
+        # Устанавливаем подсказки для полей
+        if 'client' in self.fields:
+            self.fields['client'].help_text = 'Выберите заказчика, если он зарегистрирован в системе'
+        if 'foreman' in self.fields:
+            self.fields['foreman'].help_text = 'Выберите прораба, если он зарегистрирован в системе'
+        if 'workers' in self.fields:
+            self.fields['workers'].help_text = 'Выберите одного или нескольких рабочих (необязательно)'
+        
+        # Устанавливаем выбор статуса из модели
+        self.fields['status'].choices = ConstructionSite.STATUS_CHOICES
         
         # Добавляем классы для стилизации полей
         for field_name, field in self.fields.items():
@@ -99,33 +136,37 @@ class ConstructionSiteForm(forms.ModelForm):
                 field.widget.attrs['placeholder'] = 'гггг-мм-дд'
         
         # Делаем поля необязательными
-        self.fields['client'].required = False
-        self.fields['foreman'].required = False
+        if 'client' in self.fields:
+            self.fields['client'].required = False
+        if 'foreman' in self.fields:
+            self.fields['foreman'].required = False
         
         # Настройка полей в зависимости от роли пользователя
-        if user.role == 'client':
-            # Клиент может выбрать только прораба
-            self.fields['foreman'].queryset = User.objects.filter(role='foreman')
-            del self.fields['client']  # Удаляем поле клиента, т.к. это сам пользователь
-            
-            # Добавляем классы для Select2
-            self.fields['foreman'].widget.attrs['class'] = 'form-select select2'
-            
-        elif user.role == 'foreman':
-            # Прораб может выбрать только клиентов
-            self.fields['client'].queryset = User.objects.filter(role='client')
-            
-            # Добавляем классы для Select2
-            self.fields['client'].widget.attrs['class'] = 'form-select select2'
-            
-        elif user.role == 'admin':
-            # Админ может выбрать всех
-            self.fields['client'].queryset = User.objects.filter(role='client')
-            self.fields['foreman'].queryset = User.objects.filter(role='foreman')
-            
-            # Добавляем классы для Select2
-            self.fields['client'].widget.attrs['class'] = 'form-select select2'
-            self.fields['foreman'].widget.attrs['class'] = 'form-select select2'
+        if user and hasattr(user, 'role'):
+            if user.role == 'client':
+                # Клиент может выбрать только прораба
+                if 'foreman' in self.fields:
+                    self.fields['foreman'].queryset = User.objects.filter(role='foreman')
+                    self.fields['foreman'].widget.attrs['class'] = 'form-select select2'
+                if 'client' in self.fields:
+                    del self.fields['client']  # Удаляем поле клиента, т.к. это сам пользователь
+                
+            elif user.role == 'foreman':
+                # Прораб может выбрать только клиентов
+                if 'client' in self.fields:
+                    self.fields['client'].queryset = User.objects.filter(role='client')
+                    self.fields['client'].widget.attrs['class'] = 'form-select select2'
+                
+            elif user.role == 'admin':
+                # Админ может выбрать всех
+                if 'client' in self.fields:
+                    self.fields['client'].queryset = User.objects.filter(role='client')
+                    self.fields['client'].widget.attrs['class'] = 'form-select select2'
+                if 'foreman' in self.fields:
+                    self.fields['foreman'].queryset = User.objects.filter(role='foreman')
+                    self.fields['foreman'].widget.attrs['class'] = 'form-select select2'
+    
+
     
     def clean(self):
         cleaned_data = super().clean()
@@ -139,34 +180,54 @@ class ConstructionSiteForm(forms.ModelForm):
 
 class SitePhotoForm(forms.ModelForm):
     """Форма для загрузки фотографий объекта"""
+    
     class Meta:
         model = SitePhoto
-        fields = ('photo', 'comment')
-        widgets = {
-            'comment': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Необязательный комментарий к фото'}),
-        }
-        labels = {
-            'photo': 'Фотография',
-            'comment': 'Комментарий',
-        }
+        fields = ['photo', 'comment']
     
     def __init__(self, *args, **kwargs):
+        # Извлекаем exclude_fields из kwargs, если он есть
+        self.exclude_fields = kwargs.pop('exclude_fields', [])
         super().__init__(*args, **kwargs)
-        self.fields['photo'].widget.attrs.update({'class': 'form-control'})
-        self.fields['comment'].widget.attrs.update({'class': 'form-control'})
+        
+        # Убедимся, что exclude_fields является списком
+        if not isinstance(self.exclude_fields, list):
+            self.exclude_fields = []
+        
+        # Если fields не инициализирован, инициализируем его пустым словарем
+        if not hasattr(self, 'fields') or self.fields is None:
+            self.fields = {}
+        
+        # Применяем классы к полям
+        for field_name, field in list(self.fields.items()):  # Используем list для создания копии
+            # Пропускаем исключенные поля
+            if field_name in self.exclude_fields:
+                del self.fields[field_name]
+                continue
+                
+            field.widget.attrs.update({'class': 'form-control'})
+            
+            # Добавляем атрибут required, если поле обязательно и не исключено
+            if field.required and field_name not in self.exclude_fields:
+                field.widget.attrs['required'] = 'required'
     
     def clean_photo(self):
+        # Пропускаем валидацию, если поле photo исключено
+        if self.exclude_fields and 'photo' in self.exclude_fields:
+            return self.cleaned_data.get('photo')
+            
         photo = self.cleaned_data.get('photo')
         if photo:
             # Проверка размера файла (максимум 10 МБ)
-            if photo.size > 10 * 1024 * 1024:
+            max_size = 10 * 1024 * 1024  # 10 МБ
+            if photo.size > max_size:
                 raise forms.ValidationError('Размер файла не должен превышать 10 МБ')
             
             # Проверка типа файла
-            content_type = photo.content_type.split('/')[0]
-            if content_type not in ['image']:
-                raise forms.ValidationError('Файл должен быть изображением')
-        
+            valid_extensions = ['.jpg', '.jpeg', '.png', '.gif']
+            ext = photo.name.lower()
+            if not any(ext.endswith(ext) for ext in valid_extensions):
+                raise forms.ValidationError('Допустимые форматы: JPG, JPEG, PNG, GIF')
         return photo
 
 class CommentForm(forms.ModelForm):
@@ -176,14 +237,26 @@ class CommentForm(forms.ModelForm):
         fields = ('text',)
         widgets = {
             'text': forms.Textarea(attrs={
-                'rows': 3,
                 'class': 'form-control',
-                'placeholder': 'Введите ваш комментарий...'
+                'rows': 3,
+                'placeholder': 'Введите ваш комментарий',
+                'required': 'required',
+                'minlength': '3',
+                'maxlength': '1000'
             }),
         }
-        labels = {
-            'text': 'Комментарий',
-        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['text'].label = ''  # Убираем метку поля
+    
+    def clean_text(self):
+        text = self.cleaned_data.get('text', '').strip()
+        if len(text) < 3:
+            raise forms.ValidationError('Комментарий должен содержать не менее 3 символов')
+        if len(text) > 1000:
+            raise forms.ValidationError('Комментарий не должен превышать 1000 символов')
+        return text
 
 class UserRoleForm(forms.ModelForm):
     """Форма для изменения роли пользователя"""

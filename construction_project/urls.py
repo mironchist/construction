@@ -25,6 +25,7 @@ urlpatterns = [
     path('', include('construction.urls')),  # Подключаем URL-адреса приложения construction
 ]
 
-# Добавляем обработку медиафайлов в режиме разработки
+# Добавляем обработку медиафайлов и статических файлов в режиме разработки
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

@@ -54,13 +54,13 @@ urlpatterns = [
     path('objects/<int:pk>/add-photo/', views.add_photo_view, name='add_photo'),
     
     # Комментарии объектов
-    path('objects/<int:pk>/add-comment/', views.add_comment_view, name='add_comment'),
     path('photos/<int:pk>/edit/', views.edit_photo_view, name='edit_photo'),
-    path('photos/<int:pk>/delete/', views.delete_photo_view, name='delete_photo'),
     
     # API для AJAX запросов
     path('api/objects/<int:pk>/photos/', views.api_object_photos, name='api_object_photos'),
     path('api/objects/<int:pk>/comments/', views.api_object_comments, name='api_object_comments'),
+    path('api/objects/<int:pk>/comments/add/', views.api_add_comment, name='api_add_comment'),
+    path('api/comments/<int:pk>/delete/', views.delete_comment_view, name='api_delete_comment'),
     
     # Управление пользователями
     path('users/', views.user_list_view, name='user_list'),

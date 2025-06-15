@@ -41,7 +41,7 @@ class ConstructionSite(models.Model):
     progress = models.PositiveSmallIntegerField('Прогресс', default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
     foreman = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='sites_managed', verbose_name='Ответственный прораб')
     client = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='sites_ordered', verbose_name='Заказчик')
-    workers = models.ManyToManyField(User, related_name='sites_working', verbose_name='Рабочие', blank=True)
+    workers = models.ManyToManyField(User, related_name='sites_working', verbose_name='Рабочие', blank=True, null=True)
     
     def __str__(self):
         return self.name
@@ -55,6 +55,58 @@ class ConstructionSite(models.Model):
             'cancelled': 'danger',
         }
         return colors.get(self.status, 'secondary')
+        
+    def calculate_progress_by_time(self):
+        """
+        Рассчитывает процент выполнения на основе времени.
+        Возвращает значение от 0 до 100.
+        """
+        from django.utils import timezone
+        
+        # Если объект еще не начат или отменен, возвращаем 0
+        if self.status in ['planning', 'cancelled']:
+            return 0
+            
+        # Если объект завершен, возвращаем 100
+        if self.status == 'completed':
+            return 100
+            
+        now = timezone.now().date()
+        
+        # Если дата окончания не указана, возвращаем 0
+        if not self.end_date:
+            return 0
+            
+        # Если текущая дата раньше даты начала, возвращаем 0
+        if now < self.start_date:
+            return 0
+            
+        # Если текущая дата позже даты окончания, возвращаем 100
+        if now >= self.end_date:
+            return 100
+            
+        # Рассчитываем процент выполнения
+        total_days = (self.end_date - self.start_date).days
+        if total_days <= 0:
+            return 100
+            
+        days_passed = (now - self.start_date).days
+        progress = min(100, max(0, int((days_passed / total_days) * 100)))
+        
+        return progress
+        
+    def save(self, *args, **kwargs):
+        # Если объект завершен, устанавливаем прогресс 100%
+        if self.status == 'completed':
+            self.progress = 100
+        # Если объект отменен или в планировании, сбрасываем прогресс
+        elif self.status in ['cancelled', 'planning']:
+            self.progress = 0
+        # В остальных случаях рассчитываем прогресс по времени
+        else:
+            self.progress = self.calculate_progress_by_time()
+            
+        super().save(*args, **kwargs)
     
     class Meta:
         verbose_name = 'Строительный объект'
