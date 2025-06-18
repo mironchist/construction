@@ -1,0 +1,75 @@
+# Автоматически преобразовывать концы строк в соответствии с ОС
+* text=auto
+
+# Явно указать, что это текстовые файлы
+*.py text
+*.html text
+*.css text
+*.js text
+*.md text
+*.txt text
+*.json text
+*.sql text
+*.xml text
+*.yaml text
+*.yml text
+*.ini text
+*.cfg text
+*.conf text
+
+# Указать, что это бинарные файлы (чтобы Git их не трогал)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.eot binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.mp3 binary
+*.mp4 binary
+*.mov binary
+*.avi binary
+
+# Игнорировать системные файлы
+.DS_Store
+Thumbs.db
+desktop.ini
+*.sublime-*
+.vscode/*
+.idea/*
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Указать, что это исполняемые файлы (для Unix-систем)
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

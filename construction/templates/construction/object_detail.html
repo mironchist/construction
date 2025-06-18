@@ -1,0 +1,647 @@
+{% extends 'construction/base.html' %}
+{% load static %}
+
+{% block title %}{{ object.name }}{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'objects' %}">Объекты</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ object.name|truncatechars:30 }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Галерея фотографий -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0">Фотографии объекта</h2>
+                {% if user.role == 'admin' or user.role == 'foreman' or user == object.client %}
+                <a href="{% url 'add_photo' object.id %}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-plus-lg"></i> Добавить фото
+                </a>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if object.photos.all %}
+                <div class="row g-3">
+                    {% for photo in object.photos.all|slice:":6" %}
+                    <div class="col-6 col-md-4">
+                        <a href="#" class="d-block" data-bs-toggle="modal" data-bs-target="#photoModal" 
+                           data-img="{{ photo.photo.url }}" 
+                           data-caption="{{ photo.comment|default:'Без описания' }}"
+                           data-photo-id="{{ photo.id }}">
+                            <img src="{{ photo.photo.url }}" class="img-fluid rounded" alt="Фото объекта" style="height: 180px; width: 100%; object-fit: cover;">
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-images text-muted" style="font-size: 3rem;"></i>
+                    <p class="mt-2 text-muted">Нет загруженных фотографий</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Комментарии -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Комментарии</h2>
+            </div>
+            <div class="card-body">
+                <form id="comment-form" method="post" action="{% url 'api_add_comment' object.pk %}" class="mb-4">
+                    {% csrf_token %}
+                    <div class="input-group">
+                        <input type="text" 
+                               name="text" 
+                               id="comment-text"
+                               class="form-control {% if form.text.errors %}is-invalid{% endif %}" 
+                               placeholder="Добавьте комментарий..." 
+                               value="{{ form.text.value|default:'' }}" 
+                               required
+                               minlength="3"
+                               maxlength="1000">
+                        <button type="submit" class="btn btn-primary" id="submit-comment">
+                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            <span class="btn-text">Отправить</span>
+                        </button>
+                    </div>
+                    <div id="comment-error" class="invalid-feedback d-none"></div>
+                </form>
+
+                <div id="comments-container" class="comments">
+                    {% for comment in object.comments.all %}
+                    <div class="comment-item d-flex mb-3" data-comment-id="{{ comment.id }}">
+                        <div class="flex-shrink-0">
+                            <img src="https://ui-avatars.com/api/?name={{ comment.author.get_full_name|urlencode }}&size=40&background=0D6EFD&color=fff" 
+                                 alt="{{ comment.author.get_full_name }}" class="rounded-circle">
+                        </div>
+                        <div class="ms-3 flex-grow-1">
+                            <div class="bg-light rounded-3 p-3">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <h6 class="mb-0 fw-bold">{{ comment.author.get_full_name }}</h6>
+                                    <div class="d-flex align-items-center">
+                                        <small class="text-muted me-2" title="{{ comment.created_date|date:'d.m.Y H:i' }}">
+                                            {{ comment.created_date|timesince }} назад
+                                        </small>
+                                        {% if user == comment.author or user.role == 'admin' %}
+                                        <form action="{% url 'api_delete_comment' comment.id %}" method="post" class="ms-2 delete-comment-form">
+                                            {% csrf_token %}
+                                            <button type="button" class="btn btn-sm btn-link text-danger p-0 delete-comment-btn" 
+                                                    title="Удалить комментарий">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <p class="mb-0">{{ comment.text }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted text-center py-3" id="no-comments">Пока нет комментариев. Будьте первым!</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Информация об объекте -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h2 class="h5 mb-0">Информация об объекте</h2>
+                    {% if user.role == 'admin' or user.role == 'foreman' or user == object.client %}
+                    <a href="{% url 'object_edit' object.id %}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-pencil"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span>Статус:</span>
+                        <span class="badge bg-{{ object.get_status_color }}">
+                            {{ object.get_status_display }}
+                        </span>
+                    </li>
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Адрес:</div>
+                        {{ object.address }}
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between px-0">
+                        <div>
+                            <div class="fw-bold">Дата начала:</div>
+                            {{ object.start_date|date:"d.m.Y" }}
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold">Плановая дата сдачи:</div>
+                            {{ object.end_date|date:"d.m.Y"|default:"не указана" }}
+                        </div>
+                    </li>
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Заказчик:</div>
+                        {{ object.client.get_full_name }}
+                    </li>
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Ответственный прораб:</div>
+                        {{ object.foreman.get_full_name }}
+                    </li>
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Рабочие:</div>
+                        {% if object.workers.all %}
+                            {% for worker in object.workers.all %}
+                                {{ worker.get_full_name }}{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted">Не назначены</span>
+                        {% endif %}
+                    </li>
+                    {% if object.description %}
+                    <li class="list-group-item px-0">
+                        <div class="fw-bold">Описание:</div>
+                        {{ object.description|linebreaksbr }}
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Прогресс работ -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Прогресс работ</h2>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-3" style="height: 20px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         style="width: {{ object.progress }}%;" 
+                         aria-valuenow="{{ object.progress }}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">
+                        {{ object.progress }}%
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <small>Начало: {{ object.start_date|date:"d.m.Y" }}</small>
+                    <small>Срок: {{ object.end_date|date:"d.m.Y"|default:"не указан" }}</small>
+                </div>
+                {% if object.end_date %}
+                <div class="mt-2 small text-muted">
+                    <i class="bi bi-info-circle"></i> Прогресс рассчитывается автоматически на основе времени
+                </div>
+                {% if object.status == 'completed' %}
+                <div class="mt-1 small text-success">
+                    <i class="bi bi-check-circle"></i> Объект завершен
+                </div>
+                {% elif object.status == 'cancelled' %}
+                <div class="mt-1 small text-danger">
+                    <i class="bi bi-x-circle"></i> Объект отменен
+                </div>
+                {% elif object.status == 'planning' %}
+                <div class="mt-1 small text-info">
+                    <i class="bi bi-calendar-event"></i> В стадии планирования
+                </div>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Действия -->
+        {% if user.role == 'admin' or user.role == 'foreman' or user == object.client %}
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Действия</h2>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'add_photo' object.id %}" class="btn btn-outline-primary">
+                        <i class="bi bi-camera"></i> Добавить фото
+                    </a>
+                    <a href="{% url 'object_edit' object.id %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-pencil"></i> Редактировать объект
+                    </a>
+                    {% if user.role == 'admin' or user == object.client %}
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                        <i class="bi bi-trash"></i> Удалить объект
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Модальное окно для просмотра фото -->
+<div class="modal fade" id="photoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Просмотр фотографии</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img src="" class="img-fluid" id="modalImage" style="max-height: 70vh;">
+                <p class="mt-3" id="modalCaption"></p>
+                {% if user.role == 'admin' or user.role == 'foreman' or user == object.client %}
+                <div class="mt-3">
+                    <button type="button" class="btn btn-danger" id="deletePhotoBtn">
+                        <i class="bi bi-trash"></i> Удалить фото
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения удаления -->
+{% if user.role == 'admin' or user == object.client %}
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подтверждение удаления</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что хотите удалить объект "{{ object.name }}"? Это действие нельзя отменить.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <form action="{% url 'object_delete' object.id %}" method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Функция для удаления фотографии
+    function deletePhoto(photoId, deleteUrl, callback) {
+        // Поддержка вызова как deletePhoto(photoId) и deletePhoto(photoId, deleteUrl, callback)
+        if (typeof deleteUrl === 'function') {
+            callback = deleteUrl;
+            deleteUrl = null;
+        }
+        
+        if (!confirm('Вы уверены, что хотите удалить эту фотографию?')) {
+            return false;
+        }
+        
+        console.log('Попытка удалить фотографию ID:', photoId);
+        
+        // Получаем CSRF-токен из куки
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        const csrfToken = getCookie('csrfToken') || getCookie('csrftoken');
+        const url = deleteUrl || `/api/photos/${photoId}/delete/`;
+        
+        // Используем jQuery для отправки запроса
+        return $.ajax({
+            url: url,
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            data: {
+                csrfmiddlewaretoken: csrfToken,
+                photo_id: photoId
+            },
+            dataType: 'json',
+            success: function(data) {
+                console.log('Успешный ответ:', data);
+                if (data && data.success) {
+                    showToast('Фотография успешно удалена');
+                    
+                    // Если передан колбэк, вызываем его
+                    if (typeof callback === 'function') {
+                        callback();
+                    } else {
+                        // Иначе закрываем модальное окно и перезагружаем страницу
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('photoModal'));
+                        if (modal) {
+                            modal.hide();
+                        }
+                        window.location.reload();
+                    }
+                } else {
+                    throw new Error(data.error || 'Не удалось удалить фотографию');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Ошибка при удалении фотографии:', status, error);
+                console.error('Полный ответ сервера:', xhr.responseText);
+                
+                let errorMsg = 'Произошла ошибка при удалении фотографии';
+                try {
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    } else if (xhr.responseText) {
+                        const response = JSON.parse(xhr.responseText);
+                        errorMsg = response.error || errorMsg;
+                    }
+                } catch (e) {
+                    console.error('Не удалось разобрать ответ сервера:', e);
+                }
+                showToast(errorMsg, true);
+                
+                // Если передан колбэк, вызываем его с ошибкой
+                if (typeof callback === 'function') {
+                    callback(errorMsg);
+                }
+            }
+        });
+    }
+
+    // Функция для отображения уведомления
+    function showToast(message, isError = false) {
+        const toastEl = isError ? document.getElementById('errorNotification') : document.getElementById('toastNotification');
+        const toastMessage = isError ? 
+            document.getElementById('errorMessage') : 
+            document.getElementById('toastMessage');
+            
+        if (toastEl && toastMessage) {
+            toastMessage.textContent = message;
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+        }
+    }
+
+    // Инициализация модального окна для просмотра фото
+    document.addEventListener('DOMContentLoaded', function() {
+        const photoModal = document.getElementById('photoModal');
+        
+        // Обработчик открытия модального окна с фотографией
+        if (photoModal) {
+            photoModal.addEventListener('show.bs.modal', function(event) {
+                const button = event.relatedTarget; // Кнопка, которая открыла модальное окно
+                const imgSrc = button.getAttribute('data-img');
+                const caption = button.getAttribute('data-caption');
+                const photoId = button.getAttribute('data-photo-id');
+                
+                const modalImage = this.querySelector('#modalImage');
+                const modalCaption = this.querySelector('#modalCaption');
+                const deleteBtn = this.querySelector('#deletePhotoBtn');
+                
+                if (modalImage) modalImage.src = imgSrc;
+                if (modalCaption) modalCaption.textContent = caption || 'Без описания';
+                if (deleteBtn) deleteBtn.setAttribute('data-photo-id', photoId);
+                
+                console.log('Открыто модальное окно с фото ID:', photoId);
+            });
+        }
+        
+        // Обработка отправки формы комментария
+        const commentForm = document.getElementById('comment-form');
+        
+        if (commentForm) {
+            commentForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(commentForm);
+                const submitButton = commentForm.querySelector('#submit-comment');
+                const spinner = submitButton.querySelector('.spinner-border');
+                const buttonText = submitButton.querySelector('.btn-text');
+                const commentInput = commentForm.querySelector('#comment-text');
+                const errorDiv = document.getElementById('comment-error');
+                
+                // Показываем индикатор загрузки
+                submitButton.disabled = true;
+                spinner.classList.remove('d-none');
+                buttonText.textContent = 'Отправка...';
+                errorDiv.classList.add('d-none');
+                commentInput.classList.remove('is-invalid');
+                
+                fetch(commentForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.success) {
+                        // Обновляем страницу, чтобы показать новый комментарий
+                        window.location.reload();
+                    } else {
+                        // Показываем ошибки валидации
+                        errorDiv.innerHTML = '';
+                        
+                        if (data.errors) {
+                            // Обработка ошибок валидации
+                            Object.values(data.errors).forEach(errorMessages => {
+                                errorMessages.forEach(message => {
+                                    const errorElement = document.createElement('div');
+                                    errorElement.textContent = message;
+                                    errorDiv.appendChild(errorElement);
+                                });
+                            });
+                        } else {
+                            // Общая ошибка, если нет деталей
+                            errorDiv.textContent = data.error || 'Произошла ошибка при отправке комментария';
+                        }
+                        
+                        errorDiv.classList.remove('d-none');
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка:', error);
+                    errorDiv.textContent = 'Произошла ошибка при отправке комментария';
+                    errorDiv.classList.remove('d-none');
+                })
+                .finally(() => {
+                    // Восстанавливаем состояние кнопки
+                    submitButton.disabled = false;
+                    spinner.classList.add('d-none');
+                    buttonText.textContent = 'Отправить';
+                });
+            });
+        }
+        
+        // Обработка удаления фотографии
+        const deletePhotoButtons = document.querySelectorAll('.delete-photo-button');
+        
+        // Обработчик для кнопки удаления в модальном окне
+        const deleteBtn = document.getElementById('deletePhotoBtn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const photoId = document.getElementById('modalImage').getAttribute('data-photo-id');
+                if (photoId) {
+                    if (confirm('Вы уверены, что хотите удалить эту фотографию?')) {
+                        deletePhoto(photoId);
+                    }
+                }
+            });
+        }
+        
+        // Обработчики для кнопок удаления в галерее
+        deletePhotoButtons.forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const photoId = this.getAttribute('data-photo-id');
+                const deleteUrl = this.getAttribute('data-photo-url');
+                const photoContainer = this.closest('.col-6');
+                
+                deletePhoto(photoId, deleteUrl, function() {
+                    // Плавно скрываем и удаляем фотографию из галереи
+                    if (photoContainer) {
+                        photoContainer.style.transition = 'opacity 0.3s';
+                        photoContainer.style.opacity = '0';
+                        
+                        setTimeout(() => {
+                            photoContainer.remove();
+                            
+                            // Проверяем, остались ли еще фотографии
+                            const photoGallery = document.getElementById('photoGallery');
+                            if (photoGallery && photoGallery.children.length === 0) {
+                                // Если фотографий не осталось, показываем сообщение
+                                const noPhotosHtml = `
+                                    <div class="text-center py-5" id="no-photos">
+                                        <i class="bi bi-images text-muted" style="font-size: 3rem;"></i>
+                                        <p class="mt-2 text-muted">Нет загруженных фотографий</p>
+                                    </div>`;
+                                photoGallery.insertAdjacentHTML('afterend', noPhotosHtml);
+                                photoGallery.remove();
+                            }
+                        }, 300);
+                    }
+                });
+            });
+        });
+        
+        // Обработка удаления фотографии в модальном окне
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.closest('#deletePhotoBtn')) {
+                const button = e.target.closest('#deletePhotoBtn');
+                const photoId = button.getAttribute('data-photo-id');
+                if (photoId) {
+                    deletePhoto(photoId);
+                }
+            }
+        });
+
+        // Обработка удаления комментариев
+        document.querySelectorAll('.delete-comment-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const form = this.closest('form');
+                const commentItem = this.closest('.comment-item');
+                
+                if (!confirm('Вы уверены, что хотите удалить этот комментарий?')) {
+                    return;
+                }
+
+                const formData = new FormData(form);
+                
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.success) {
+                        commentItem.remove();
+                        showToast('Комментарий успешно удалён');
+                        
+                        // Если больше нет комментариев, показываем сообщение
+                        const commentsContainer = document.getElementById('comments-container');
+                        if (commentsContainer && commentsContainer.querySelectorAll('.comment-item').length === 0) {
+                            const noComments = document.createElement('p');
+                            noComments.className = 'text-muted text-center py-3';
+                            noComments.id = 'no-comments';
+                            noComments.textContent = 'Пока нет комментариев. Будьте первым!';
+                            commentsContainer.appendChild(noComments);
+                        }
+                    } else {
+                        throw new Error(data.error || 'Не удалось удалить комментарий');
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка при удалении комментария:', error);
+                    showToast(error.message || 'Произошла ошибка при удалении комментария', true);
+                });
+            });
+        });
+    });
+</script>
+
+<!-- Toast уведомления -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <!-- Успешное уведомление -->
+    <div id="toastNotification" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body">
+                <i class="bi bi-check-circle me-2"></i>
+                <span id="toastMessage">Операция выполнена успешно</span>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Закрыть"></button>
+        </div>
+    </div>
+    
+    <!-- Ошибка -->
+    <div id="errorNotification" class="toast align-items-center text-white bg-danger border-0 mt-2" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                <span id="errorMessage">Произошла ошибка</span>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Закрыть"></button>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения удаления комментария -->
+<div class="modal fade" id="deleteCommentModal" tabindex="-1" aria-labelledby="deleteCommentModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteCommentModalLabel">Подтверждение удаления</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                Вы уверены, что хотите удалить этот комментарий? Это действие нельзя отменить.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteComment">Удалить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

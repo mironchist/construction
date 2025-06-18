@@ -1,0 +1,125 @@
+{% extends 'construction/base.html' %}
+
+{% block title %}Создание объекта{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'objects' %}">Объекты</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Создание</li>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title mb-0">Создание нового объекта</h2>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Название объекта</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="address" class="form-label">Адрес объекта</label>
+                        <textarea class="form-control" id="address" name="address" rows="2" required></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="start_date" class="form-label">Дата начала работ</label>
+                            <input type="date" class="form-control" id="start_date" name="start_date" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="end_date" class="form-label">Планируемая дата окончания</label>
+                            <input type="date" class="form-control" id="end_date" name="end_date">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Описание объекта</label>
+                        <textarea class="form-control" id="description" name="description" rows="4"></textarea>
+                    </div>
+                    
+                    {% if user.role == 'admin' or user.role == 'foreman' %}
+                    <div class="mb-3">
+                        <label for="client" class="form-label">Заказчик</label>
+                        <select class="form-select" id="client" name="client" required>
+                            <option value="" selected disabled>Выберите заказчика</option>
+                            {% for client in clients %}
+                                <option value="{{ client.id }}" {% if client.id == user.id %}selected{% endif %}>
+                                    {{ client.get_full_name }} ({{ client.get_role_display }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="client" value="{{ user.id }}">
+                    {% endif %}
+                    
+                    {% if user.role == 'admin' or user.role == 'foreman' %}
+                    <div class="mb-3">
+                        <label class="form-label">Ответственный прораб</label>
+                        <select class="form-select" name="foreman" required>
+                            <option value="" selected disabled>Выберите прораба</option>
+                            {% for foreman in foremen %}
+                                <option value="{{ foreman.id }}" {% if foreman.id == user.id %}selected{% endif %}>
+                                    {{ foreman.get_full_name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="foreman" value="{{ user.foreman.id }}">
+                    {% endif %}
+                    
+                    {% if user.role == 'admin' or user.role == 'foreman' %}
+                    <div class="mb-3">
+                        <label class="form-label">Рабочие</label>
+                        <select class="form-select" name="workers" multiple>
+                            {% for worker in workers %}
+                                <option value="{{ worker.id }}">{{ worker.get_full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Удерживайте Ctrl (или Cmd на Mac) для выбора нескольких рабочих</div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mb-3">
+                        <label for="photos" class="form-label">Фотографии объекта</label>
+                        <input class="form-control" type="file" id="photos" name="photos" multiple accept="image/*">
+                        <div class="form-text">Вы можете загрузить несколько фотографий, выбрав их с зажатой клавишей Ctrl (или Cmd на Mac)</div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{% url 'objects' %}" class="btn btn-secondary me-md-2">Отмена</a>
+                        <button type="submit" class="btn btn-primary">Создать объект</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Инициализация выбора даты
+    document.addEventListener('DOMContentLoaded', function() {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('start_date').value = today;
+        
+        // Устанавливаем минимальную дату окончания на дату начала
+        document.getElementById('start_date').addEventListener('change', function() {
+            const endDateInput = document.getElementById('end_date');
+            endDateInput.min = this.value;
+            if (endDateInput.value && endDateInput.value < this.value) {
+                endDateInput.value = this.value;
+            }
+        });
+    });
+</script>
+{% endblock %}

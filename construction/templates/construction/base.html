@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Строительный учет{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <!-- Select2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    {% block extra_css %}{% endblock %}
+    <!-- Flatpickr CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- Custom CSS -->
+    <style>
+        .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__rendered {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+        }
+        .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice {
+            display: flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            background-color: #e9ecef;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+        }
+        .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice__remove {
+            color: #6c757d;
+            margin-right: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{% url 'home' %}">СтройКонтроль</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'home' %}">Главная</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'objects' %}">Объекты</a>
+                    </li>
+                    {% if user.is_authenticated and user.role in 'foreman,admin' or user.is_superuser %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'task_list' %}">
+                            <i class="bi bi-list-task"></i> Задачи
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    {% if user.is_authenticated %}
+                        {% if user.is_admin %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'user_list' %}">
+                                <i class="bi bi-people"></i> Пользователи
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'profile' %}">
+                                <i class="bi bi-person"></i> Профиль
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'logout' %}">Выход</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'login' %}">Вход</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'register' %}">Регистрация</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <nav aria-label="breadcrumb" class="mb-4">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'home' %}">Главная</a></li>
+                {% block breadcrumbs %}{% endblock %}
+            </ol>
+        </nav>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer class="bg-light text-center text-lg-start mt-5">
+        <div class="text-center p-3" style="background-color: rgba(0, 0, 0, 0.05);">
+            &copy; {% now "Y" %} СтройКонтроль
+        </div>
+    </footer>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Select2 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+    
+    <style>
+        /* Стили для комментариев */
+        .comment {
+            border-left: 3px solid #dee2e6;
+            padding-left: 1rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .comment.highlight {
+            background-color: rgba(13, 110, 253, 0.05);
+            border-left-color: #0d6efd;
+        }
+        
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+        
+        .comment-author {
+            font-weight: 600;
+            color: #0d6efd;
+        }
+        
+        .comment-date {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        
+        .comment-actions {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .comment:hover .comment-actions {
+            opacity: 1;
+        }
+        
+        /* Анимация появления нового комментария */
+        @keyframes highlight {
+            from { background-color: rgba(13, 110, 253, 0.1); }
+            to { background-color: transparent; }
+        }
+        
+        .highlight {
+            animation: highlight 2s ease-out;
+        }
+        
+        /* Стили для уведомлений */
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1100;
+        }
+        
+        .toast {
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 0.375rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            max-width: 350px;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        
+        .toast.show {
+            opacity: 1;
+        }
+        
+        /* Стили для выбора ролей */
+        .role-cell {
+            min-width: 200px;
+        }
+        
+        .role-badge .badge {
+            font-size: 0.875rem;
+            padding: 0.35em 0.65em;
+        }
+        
+        .role-selector {
+            flex-grow: 1;
+            max-width: 200px;
+        }
+        
+        .role-selector .select2-container {
+            width: 100% !important;
+        }
+        
+        .role-selector .select2-selection--single {
+            height: 31px;
+            padding: 0.25rem 0.5rem;
+        }
+        
+        .role-selector .select2-selection__arrow {
+            height: 29px;
+        }
+        
+        .role-selector .select2-selection__rendered {
+            line-height: 1.5;
+            padding-left: 0.5rem;
+            padding-right: 1.5rem;
+        }
+        
+        /* Иконки для ролей */
+        .select2-results__option {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #000;
+        }
+        
+        .select2-results__option[aria-selected="true"] {
+            background-color: #f8f9fa;
+            color: #212529;
+        }
+        
+        .select2-container--bootstrap-5 .select2-results__option--highlighted {
+            color: #fff;
+            background-color: #0d6efd;
+        }
+    </style>
+    
+    <script>
+        // Функция для форматирования опций с HTML
+        function formatOption(option) {
+            if (!option.id) return option.text;
+            return $(`<span>${option.text}</span>`);
+        }
+        
+        // Инициализация всех элементов с классом select2
+        $(document).ready(function() {
+            // Обычный select2
+            $('.select2:not(.user-role-select)').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                placeholder: 'Выберите значение',
+                allowClear: true,
+                language: 'ru'
+            });
+            
+            // Select2 для выбора ролей с поддержкой HTML
+            $('.user-role-select').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                templateResult: formatOption,
+                templateSelection: formatOption,
+                language: 'ru',
+                minimumResultsForSearch: -1 // Отключаем поиск
+            });
+            
+            // Инициализация flatpickr для всех полей с атрибутом type="date"
+            flatpickr("input[type='date']", {
+                dateFormat: "Y-m-d",
+                allowInput: true,
+                locale: "ru"
+            });
+            
+            // Обработчик изменения роли пользователя
+            $('.user-role-select').on('change', function() {
+                const userId = $(this).data('user-id');
+                const newRole = $(this).val();
+                
+                if (!newRole) return;
+                
+                // Отправляем AJAX-запрос для обновления роли
+                $.ajax({
+                    url: `/users/${userId}/update-role/`,
+                    method: 'POST',
+                    data: {
+                        'role': newRole,
+                        'csrfmiddlewaretoken': '{{ csrf_token }}'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Находим все элементы, связанные с этой ролью
+                            const $select = $(`select[data-user-id="${userId}"]`);
+                            const $roleCell = $select.closest('.role-cell');
+                            const $roleBadge = $roleCell.find('.role-badge .badge');
+                            
+                            // Обновляем бейдж с ролью
+                            const roleBadge = $(`select[data-user-id="${userId}"]`)
+                                .closest('.role-cell')
+                                .find('.role-badge .badge');
+                                
+                            // Обновляем текст и классы бейджа в зависимости от роли
+                            roleBadge.text(response.role_display)
+                                   .removeClass('bg-secondary bg-primary bg-warning bg-success bg-danger')
+                                   .addClass(`bg-${response.role}`);
+                            
+                            // Обновляем выбранное значение в select
+                            $(this).val(response.role).trigger('change');
+                            
+                            console.log('Обновление завершено', {
+                                badge: {
+                                    classes: $badge.attr('class'),
+                                    text: $badge.text()
+                                },
+                                select: {
+                                    value: $select.val(),
+                                    text: $select.find('option:selected').text().trim()
+                                }
+                            });
+                                    
+                            // Показываем уведомление
+                            const toast = new bootstrap.Toast(document.getElementById('toast'));
+                            document.getElementById('toast-message').textContent = 'Роль успешно обновлена';
+                            document.getElementById('toast').querySelector('.toast-header').className = 
+                                `toast-header text-white bg-${response.role}`;
+                            toast.show();
+                        } else {
+                            alert('Ошибка при обновлении роли: ' + (response.error || 'Неизвестная ошибка'));
+                        }
+                    },
+                    error: function(xhr) {
+                        const error = xhr.responseJSON ? xhr.responseJSON.error : 'Ошибка сервера';
+                        alert('Ошибка при обновлении роли: ' + error);
+                    }
+                });
+            });
+        });
+    </script>
+    <!-- Toast уведомление -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header text-white">
+                <strong class="me-auto">Уведомление</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Закрыть"></button>
+            </div>
+            <div class="toast-body" id="toast-message">
+                Роль успешно обновлена
+            </div>
+        </div>
+    </div>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Select2 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- Flatpickr Russian localization -->
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/ru.js"></script>
+    <!-- Custom JS -->
+    <script src="{% static 'js/main.js' %}"></script>
+    
+    <script>
+    // Инициализация Select2 для всех select-элементов
+    $(document).ready(function() {
+        $('.select2').select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            placeholder: 'Выберите значение',
+            allowClear: true,
+            language: 'ru'
+        });
+        
+        // Инициализация Flatpickr для полей с датой
+        $('.datepicker').flatpickr({
+            dateFormat: 'Y-m-d',
+            locale: 'ru',
+            allowInput: true
+        });
+    });
+    </script>
+    
+    <!-- Контейнер для уведомлений -->
+    <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100"></div>
+</body>
+</html>

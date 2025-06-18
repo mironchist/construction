@@ -1,0 +1,72 @@
+{% extends 'construction/base.html' %}
+
+{% block title %}{{ title|default:'Подтверждение удаления' }}{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'objects' %}">Объекты</a></li>
+    {% if photo %}
+        <li class="breadcrumb-item"><a href="{% url 'object_detail' object.pk %}">{{ object.name|truncatechars:20 }}</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Удаление фотографии</li>
+    {% else %}
+        <li class="breadcrumb-item"><a href="{% url 'object_detail' object.pk %}">{{ object.name|truncatechars:20 }}</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Удаление</li>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-exclamation-triangle"></i> {{ title|default:'Подтверждение удаления' }}
+                    </h4>
+                </div>
+                <div class="card-body">
+                    {% if photo %}
+                        <h5 class="card-title">Вы уверены, что хотите удалить эту фотографию?</h5>
+                        <div class="text-center mb-4">
+                            <img src="{{ photo.photo.url }}" class="img-fluid rounded" alt="Фотография объекта" style="max-height: 300px;">
+                            {% if photo.comment %}
+                                <p class="mt-2">{{ photo.comment }}</p>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <h5 class="card-title">Вы уверены, что хотите удалить объект?</h5>
+                        <p class="card-text">
+                            <strong>Название:</strong> {{ object.name }}<br>
+                            <strong>Адрес:</strong> {{ object.address|truncatechars:50 }}
+                        </p>
+                    {% endif %}
+                    
+                    <div class="alert alert-warning" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <strong>Внимание!</strong> 
+                        {{ message|default:'Это действие нельзя отменить. Будут удалены все связанные данные:' }}
+                        
+                        {% if not photo %}
+                            <ul class="mb-0 mt-2">
+                                <li>Фотографии объекта ({{ object.photos.count }})</li>
+                                <li>Комментарии ({{ object.comments.count }})</li>
+                            </ul>
+                        {% endif %}
+                    </div>
+                    
+                    <form method="post" class="mt-4">
+                        {% csrf_token %}
+                        <div class="d-flex justify-content-between">
+                            <a href="{% if photo %}{% url back_url pk=object.pk %}{% else %}{% url back_url pk=object.pk %}{% endif %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left"></i> Отмена
+                            </a>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-trash"></i> Удалить навсегда
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

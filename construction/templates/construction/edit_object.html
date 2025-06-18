@@ -1,0 +1,248 @@
+{% extends 'construction/base.html' %}
+
+{% block title %}Редактирование объекта{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'objects' %}">Объекты</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'object_detail' object.id %}">{{ object.name|truncatechars:20 }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Редактирование</li>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title mb-0">Редактирование объекта</h2>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Название объекта</label>
+                        <input type="text" class="form-control" id="name" name="name" value="{{ object.name }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="address" class="form-label">Адрес объекта</label>
+                        <textarea class="form-control" id="address" name="address" rows="2" required>{{ object.address }}</textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="start_date" class="form-label">Дата начала работ</label>
+                            <input type="date" class="form-control" id="start_date" name="start_date" 
+                                   value="{{ object.start_date|date:'Y-m-d' }}" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="end_date" class="form-label">Планируемая дата окончания</label>
+                            <input type="date" class="form-control" id="end_date" name="end_date" 
+                                   value="{{ object.end_date|date:'Y-m-d' }}">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Описание объекта</label>
+                        <textarea class="form-control" id="description" name="description" rows="4">{{ object.description }}</textarea>
+                    </div>
+                    
+                    {% if user.role == 'admin' or user.role == 'foreman' %}
+                    <div class="mb-3">
+                        <label for="client" class="form-label">Заказчик</label>
+                        <select class="form-select" id="client" name="client" required>
+                            {% for client in clients %}
+                                <option value="{{ client.id }}" {% if client.id == object.client.id %}selected{% endif %}>
+                                    {{ client.get_full_name }} ({{ client.get_role_display }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="client" value="{{ object.client.id }}">
+                    {% endif %}
+                    
+                    {% if user.role == 'admin' or user.role == 'foreman' %}
+                    <div class="mb-3">
+                        <label class="form-label">Ответственный прораб</label>
+                        <select class="form-select" name="foreman" required>
+                            {% for foreman in foremen %}
+                                <option value="{{ foreman.id }}" {% if foreman.id == object.foreman.id %}selected{% endif %}>
+                                    {{ foreman.get_full_name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="foreman" value="{{ object.foreman.id }}">
+                    {% endif %}
+                    
+                    {% if user.role == 'admin' or user.role == 'foreman' %}
+                    <div class="mb-3">
+                        <label class="form-label">Рабочие</label>
+                        <select class="form-select" name="workers" multiple>
+                            {% for worker in workers %}
+                                <option value="{{ worker.id }}" {% if worker in object.workers.all %}selected{% endif %}>
+                                    {{ worker.get_full_name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Удерживайте Ctrl (или Cmd на Mac) для выбора нескольких рабочих</div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <a href="{% url 'object_detail' object.id %}" class="btn btn-secondary me-md-2">Отмена</a>
+                        <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Блок с фотографиями объекта -->
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="h5 mb-0">Фотографии объекта</h2>
+                <a href="{% url 'add_photo' object.id %}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-plus-lg"></i> Добавить фото
+                </a>
+            </div>
+            <div class="card-body">
+                {% if object.photos.all %}
+                <div class="row g-3">
+                    {% for photo in object.photos.all %}
+                    <div class="col-6 col-md-4">
+                        <div class="card">
+                            <img src="{{ photo.photo.url }}" class="card-img-top" alt="Фото объекта" 
+                                 style="height: 150px; object-fit: cover;">
+                            <div class="card-body p-2">
+                                <p class="card-text small text-muted mb-1">
+                                    {{ photo.upload_date|date:"d.m.Y H:i" }}
+                                </p>
+                                <p class="card-text small">
+                                    {{ photo.comment|default:"Без описания"|truncatechars:30 }}
+                                </p>
+                                <div class="btn-group w-100">
+                                    <a href="{% url 'edit_photo' photo.id %}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{% url 'delete_photo' photo.id %}" class="btn btn-sm btn-outline-danger" 
+                                       onclick="return confirm('Вы уверены, что хотите удалить это фото?')">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-images text-muted" style="font-size: 3rem;"></i>
+                    <p class="mt-2 text-muted">Нет загруженных фотографий</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- Статус объекта -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Статус объекта</h2>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'update_object_status' object.id %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="status" class="form-label">Текущий статус</label>
+                        <select class="form-select" id="status" name="status" onchange="this.form.submit()">
+                            <option value="planned" {% if object.status == 'planned' %}selected{% endif %}>Запланирован</option>
+                            <option value="in_progress" {% if object.status == 'in_progress' %}selected{% endif %}>В работе</option>
+                            <option value="on_hold" {% if object.status == 'on_hold' %}selected{% endif %}>Приостановлен</option>
+                            <option value="completed" {% if object.status == 'completed' %}selected{% endif %}>Завершен</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="progress" class="form-label">Прогресс: <span id="progressValue">{{ object.progress }}</span>%</label>
+                        <input type="range" class="form-range" id="progress" name="progress" 
+                               min="0" max="100" value="{{ object.progress }}" 
+                               oninput="document.getElementById('progressValue').textContent = this.value">
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100">Обновить статус</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Действия -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Действия</h2>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{% url 'object_detail' object.id %}" class="btn btn-outline-primary">
+                        <i class="bi bi-arrow-left"></i> Назад к объекту
+                    </a>
+                    <a href="{% url 'add_photo' object.id %}" class="btn btn-outline-primary">
+                        <i class="bi bi-camera"></i> Добавить фото
+                    </a>
+                    {% if user.role == 'admin' or user == object.client %}
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                        <i class="bi bi-trash"></i> Удалить объект
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения удаления -->
+{% if user.role == 'admin' or user == object.client %}
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Подтверждение удаления</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что хотите удалить объект "{{ object.name }}"? Это действие нельзя отменить.</p>
+                <p class="text-danger">Внимание! Будут также удалены все фотографии и комментарии, связанные с этим объектом.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <form action="{% url 'delete_object' object.id %}" method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Инициализация выбора даты
+    document.addEventListener('DOMContentLoaded', function() {
+        // Устанавливаем минимальную дату окончания на дату начала
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
+        
+        if (startDateInput && endDateInput) {
+            startDateInput.addEventListener('change', function() {
+                endDateInput.min = this.value;
+                if (endDateInput.value && endDateInput.value < this.value) {
+                    endDateInput.value = this.value;
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}
